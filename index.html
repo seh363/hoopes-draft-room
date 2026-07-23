@@ -592,12 +592,13 @@ const SimCore = (() => {
     return roster.slice(0, D.nRounds);
   }
 
-  // ---------- recommend (batched Monte Carlo) ----------
-  // Runs nSims in batches: each batch draws fresh seasons AND a fresh opponent field
-  // (different bot rosters + bot aggressiveness), so equity averages over both scoring
-  // randomness and opponent-field uncertainty. Candidate comparisons stay low-variance
-  // within a batch via common random numbers. onBatch (optional) receives progressive
-  // partial results after every batch for live UI updates.
+  // ---------- recommend (batched Monte Carlo), decomposed for parallel execution ----------
+  // prepareCandidates/runBatch/assembleRows are pure functions of (D, myIdx, draftedSet,
+  // draftSlot, topK, seed, batchIdx) -- deterministic, so multiple workers can independently
+  // call prepareCandidates with identical inputs and get identical candidate lists/rosters,
+  // then each run a disjoint slice of batch indices via runBatch and have their partial sums
+  // merged by the caller. recommend() itself just runs this loop single-threaded (used for
+  // the sync fallback path with no Worker support).
   function makeBotRostersRandomized(nBots, seed) {
     const r = makeRng(seed ^ 0x9E3779B9);
     const topk = 3 + Math.floor(r.uniform() * 8);            // 3..10
@@ -605,7 +606,7 @@ const SimCore = (() => {
     return makeBotRosters(nBots, seed, topk, temperature);
   }
 
-  function recommend(myIdx, draftedSet, draftSlot, nSims, topK, seed, onBatch) {
+  function prepareCandidates(myIdx, draftedSet, draftSlot, topK) {
     const capsByPos = [D.caps.QB, D.caps.RB, D.caps.WR, D.caps.TE];
     const counts = [0, 0, 0, 0];
     for (const i of myIdx) counts[posArr[i]] += 1;
@@ -617,64 +618,102 @@ const SimCore = (() => {
       if (cands.length >= topK) break;
     }
     const rosters = cands.map(c => autofill([...myIdx, c], draftedSet, draftSlot));
+    return { cands, rosters };
+  }
 
-    const nBatches = Math.max(2, Math.ceil(nSims / 2500));
-    const batchSize = Math.ceil(nSims / nBatches);
-    const acc = cands.map(() => ({ c1: 0, c2: 0, c3: 0, cTop: 0, S: 0, eqBatches: [] }));
-
+  function runBatch(rosters, cands, seed, batchIdx, batchSize) {
+    const bots = makeBotRostersRandomized(D.nTeams, seed + 1000 + batchIdx * 131).slice(0, D.nTeams - 1);
+    const union = new Set();
+    for (const r of rosters) for (const i of r) union.add(i);
+    for (const bt of bots) for (const i of bt) union.add(i);
+    const playerList = [...union];
+    const sc = drawScores(playerList, batchSize, seed + batchIdx * 7919);
+    const field = finishOpponentField(sc, bots);
     const w = D.weights;
-    const assemble = () => {
-      const rows = cands.map((c, k) => {
-        const a = acc[k];
-        const S = a.S || 1;
-        const pP = a.c1 / S, pR = a.c2 / S, pF = a.c3 / S, pT = a.cTop / S;
-        const eq = w.playoff_team * pP + w.R3 * pR + w.finals * pF + w.finals_top * pT;
-        let se = null;
-        if (a.eqBatches.length >= 2) {
-          const m = a.eqBatches.reduce((x, y) => x + y, 0) / a.eqBatches.length;
-          const v = a.eqBatches.reduce((x, y) => x + (y - m) ** 2, 0) / (a.eqBatches.length - 1);
-          // c4 correction: with few batches the sqrt of the sample variance is biased LOW
-          // (badly at n=2, ~20% under). Dividing by c4(n) makes the displayed +/- honest.
-          const C4 = { 2: 0.7979, 3: 0.8862, 4: 0.9213, 5: 0.9400, 6: 0.9515, 7: 0.9594,
-                       8: 0.9650, 9: 0.9693, 10: 0.9727, 11: 0.9754, 12: 0.9776 };
-          const c4 = C4[a.eqBatches.length] || 1.0;
-          se = Math.sqrt(v / a.eqBatches.length) / c4;
-        }
-        return {
-          idx: c, name: D.players[c].name, position: D.positions[posArr[c]],
-          team: D.players[c].teamName, adp: adpArr[c], muSrc: D.players[c].src, mu: muArr[c],
-          P_playoff: pP, P_R3: pR, P_finals: pF, P_finals_top: pT, equity: eq, equitySE: se,
-          simsDone: a.S,
-        };
-      });
-      rows.sort((x, y) => y.equity - x.equity);
-      const best = rows.length ? rows[0].equity : 0;
-      for (const r of rows) r.equityVsBest = r.equity - best;
-      return rows;
-    };
+    return cands.map((c, k) => {
+      const r = rosterEquityCounts(sc, rosters[k], field, null);
+      const eq = w.playoff_team * (r.c1 / r.S) + w.R3 * (r.c2 / r.S)
+               + w.finals * (r.c3 / r.S) + w.finals_top * (r.cTop / r.S);
+      return { c1: r.c1, c2: r.c2, c3: r.c3, cTop: r.cTop, S: r.S, eq };
+    });
+  }
 
-    for (let b = 0; b < nBatches; b++) {
-      const bots = makeBotRostersRandomized(D.nTeams, seed + 1000 + b * 131).slice(0, D.nTeams - 1);
-      const union = new Set();
-      for (const r of rosters) for (const i of r) union.add(i);
-      for (const bt of bots) for (const i of bt) union.add(i);
-      const playerList = [...union];
-      const sc = drawScores(playerList, batchSize, seed + b * 7919);
-      const field = finishOpponentField(sc, bots);
-      for (let k = 0; k < cands.length; k++) {
-        const r = rosterEquityCounts(sc, rosters[k], field, null);
-        const a = acc[k];
-        a.c1 += r.c1; a.c2 += r.c2; a.c3 += r.c3; a.cTop += r.cTop; a.S += r.S;
-        a.eqBatches.push(w.playoff_team * (r.c1 / r.S) + w.R3 * (r.c2 / r.S)
-                         + w.finals * (r.c3 / r.S) + w.finals_top * (r.cTop / r.S));
-      }
-      if (onBatch) onBatch(assemble(), b + 1, nBatches);
+  function newAcc(n) {
+    return Array.from({ length: n }, () => ({ c1: 0, c2: 0, c3: 0, cTop: 0, S: 0, eqBatches: [] }));
+  }
+
+  function mergeBatchIntoAcc(acc, batchResults) {
+    for (let k = 0; k < batchResults.length; k++) {
+      const r = batchResults[k], a = acc[k];
+      a.c1 += r.c1; a.c2 += r.c2; a.c3 += r.c3; a.cTop += r.cTop; a.S += r.S;
+      a.eqBatches.push(r.eq);
     }
-    return assemble();
+  }
+
+  function assembleRows(cands, acc) {
+    const w = D.weights;
+    const rows = cands.map((c, k) => {
+      const a = acc[k];
+      const S = a.S || 1;
+      const pP = a.c1 / S, pR = a.c2 / S, pF = a.c3 / S, pT = a.cTop / S;
+      const eq = w.playoff_team * pP + w.R3 * pR + w.finals * pF + w.finals_top * pT;
+      let se = null;
+      if (a.eqBatches.length >= 2) {
+        const m = a.eqBatches.reduce((x, y) => x + y, 0) / a.eqBatches.length;
+        const v = a.eqBatches.reduce((x, y) => x + (y - m) ** 2, 0) / (a.eqBatches.length - 1);
+        // c4 correction: with few batches the sqrt of the sample variance is biased LOW
+        // (badly at n=2, ~20% under). Dividing by c4(n) makes the displayed +/- honest.
+        const C4 = { 2: 0.7979, 3: 0.8862, 4: 0.9213, 5: 0.9400, 6: 0.9515, 7: 0.9594,
+                     8: 0.9650, 9: 0.9693, 10: 0.9727, 11: 0.9754, 12: 0.9776 };
+        const c4 = C4[a.eqBatches.length] || 1.0;
+        se = Math.sqrt(v / a.eqBatches.length) / c4;
+      }
+      return {
+        idx: c, name: D.players[c].name, position: D.positions[posArr[c]],
+        team: D.players[c].teamName, adp: adpArr[c], muSrc: D.players[c].src, mu: muArr[c],
+        P_playoff: pP, P_R3: pR, P_finals: pF, P_finals_top: pT, equity: eq, equitySE: se,
+        simsDone: a.S,
+      };
+    });
+    rows.sort((x, y) => y.equity - x.equity);
+    const best = rows.length ? rows[0].equity : 0;
+    for (const r of rows) r.equityVsBest = r.equity - best;
+    return rows;
+  }
+
+  function batchPlan(nSims) {
+    const nBatches = Math.max(3, Math.ceil(nSims / 1200));
+    const batchSize = Math.ceil(nSims / nBatches);
+    return { nBatches, batchSize };
+  }
+
+  function recommend(myIdx, draftedSet, draftSlot, nSims, topK, seed, onBatch) {
+    const { cands, rosters } = prepareCandidates(myIdx, draftedSet, draftSlot, topK);
+    const { nBatches, batchSize } = batchPlan(nSims);
+    const acc = newAcc(cands.length);
+    // Early stopping: once the leader's edge over the runner-up is comfortably larger
+    // than the noise in both estimates (3x combined SE), further batches won't change
+    // the ranking -- skip them. Requires >=3 batches first so SE itself isn't too noisy.
+    const MIN_BATCHES_BEFORE_STOP = 3;
+    for (let b = 0; b < nBatches; b++) {
+      mergeBatchIntoAcc(acc, runBatch(rosters, cands, seed, b, batchSize));
+      const rowsSoFar = assembleRows(cands, acc);
+      if (onBatch) onBatch(rowsSoFar, b + 1, nBatches);
+      if (b + 1 >= MIN_BATCHES_BEFORE_STOP && cands.length >= 2) {
+        const [leader, runnerUp] = rowsSoFar;
+        if (leader.equitySE !== null && runnerUp.equitySE !== null) {
+          const gap = leader.equity - runnerUp.equity;
+          const combinedSE = Math.sqrt(leader.equitySE ** 2 + runnerUp.equitySE ** 2);
+          if (gap > 3 * combinedSE) break;
+        }
+      }
+    }
+    return assembleRows(cands, acc);
   }
 
   return { init, makeRng, drawScores, rosterWeekScores, makeBotRosters, makeBotRostersRandomized,
            buildOpponentField, finishOpponentField, rosterEquity, rosterEquityCounts, autofill, recommend, quantile,
+           prepareCandidates, runBatch, newAcc, mergeBatchIntoAcc, assembleRows, batchPlan,
            _internals: () => ({ posArr, teamArr, adpArr, muArr, byeArr, adpOrder, D }) };
 })();
 
@@ -1025,12 +1064,13 @@ const SimCore = (() => {
     return roster.slice(0, D.nRounds);
   }
 
-  // ---------- recommend (batched Monte Carlo) ----------
-  // Runs nSims in batches: each batch draws fresh seasons AND a fresh opponent field
-  // (different bot rosters + bot aggressiveness), so equity averages over both scoring
-  // randomness and opponent-field uncertainty. Candidate comparisons stay low-variance
-  // within a batch via common random numbers. onBatch (optional) receives progressive
-  // partial results after every batch for live UI updates.
+  // ---------- recommend (batched Monte Carlo), decomposed for parallel execution ----------
+  // prepareCandidates/runBatch/assembleRows are pure functions of (D, myIdx, draftedSet,
+  // draftSlot, topK, seed, batchIdx) -- deterministic, so multiple workers can independently
+  // call prepareCandidates with identical inputs and get identical candidate lists/rosters,
+  // then each run a disjoint slice of batch indices via runBatch and have their partial sums
+  // merged by the caller. recommend() itself just runs this loop single-threaded (used for
+  // the sync fallback path with no Worker support).
   function makeBotRostersRandomized(nBots, seed) {
     const r = makeRng(seed ^ 0x9E3779B9);
     const topk = 3 + Math.floor(r.uniform() * 8);            // 3..10
@@ -1038,7 +1078,7 @@ const SimCore = (() => {
     return makeBotRosters(nBots, seed, topk, temperature);
   }
 
-  function recommend(myIdx, draftedSet, draftSlot, nSims, topK, seed, onBatch) {
+  function prepareCandidates(myIdx, draftedSet, draftSlot, topK) {
     const capsByPos = [D.caps.QB, D.caps.RB, D.caps.WR, D.caps.TE];
     const counts = [0, 0, 0, 0];
     for (const i of myIdx) counts[posArr[i]] += 1;
@@ -1050,64 +1090,102 @@ const SimCore = (() => {
       if (cands.length >= topK) break;
     }
     const rosters = cands.map(c => autofill([...myIdx, c], draftedSet, draftSlot));
+    return { cands, rosters };
+  }
 
-    const nBatches = Math.max(2, Math.ceil(nSims / 2500));
-    const batchSize = Math.ceil(nSims / nBatches);
-    const acc = cands.map(() => ({ c1: 0, c2: 0, c3: 0, cTop: 0, S: 0, eqBatches: [] }));
-
+  function runBatch(rosters, cands, seed, batchIdx, batchSize) {
+    const bots = makeBotRostersRandomized(D.nTeams, seed + 1000 + batchIdx * 131).slice(0, D.nTeams - 1);
+    const union = new Set();
+    for (const r of rosters) for (const i of r) union.add(i);
+    for (const bt of bots) for (const i of bt) union.add(i);
+    const playerList = [...union];
+    const sc = drawScores(playerList, batchSize, seed + batchIdx * 7919);
+    const field = finishOpponentField(sc, bots);
     const w = D.weights;
-    const assemble = () => {
-      const rows = cands.map((c, k) => {
-        const a = acc[k];
-        const S = a.S || 1;
-        const pP = a.c1 / S, pR = a.c2 / S, pF = a.c3 / S, pT = a.cTop / S;
-        const eq = w.playoff_team * pP + w.R3 * pR + w.finals * pF + w.finals_top * pT;
-        let se = null;
-        if (a.eqBatches.length >= 2) {
-          const m = a.eqBatches.reduce((x, y) => x + y, 0) / a.eqBatches.length;
-          const v = a.eqBatches.reduce((x, y) => x + (y - m) ** 2, 0) / (a.eqBatches.length - 1);
-          // c4 correction: with few batches the sqrt of the sample variance is biased LOW
-          // (badly at n=2, ~20% under). Dividing by c4(n) makes the displayed +/- honest.
-          const C4 = { 2: 0.7979, 3: 0.8862, 4: 0.9213, 5: 0.9400, 6: 0.9515, 7: 0.9594,
-                       8: 0.9650, 9: 0.9693, 10: 0.9727, 11: 0.9754, 12: 0.9776 };
-          const c4 = C4[a.eqBatches.length] || 1.0;
-          se = Math.sqrt(v / a.eqBatches.length) / c4;
-        }
-        return {
-          idx: c, name: D.players[c].name, position: D.positions[posArr[c]],
-          team: D.players[c].teamName, adp: adpArr[c], muSrc: D.players[c].src, mu: muArr[c],
-          P_playoff: pP, P_R3: pR, P_finals: pF, P_finals_top: pT, equity: eq, equitySE: se,
-          simsDone: a.S,
-        };
-      });
-      rows.sort((x, y) => y.equity - x.equity);
-      const best = rows.length ? rows[0].equity : 0;
-      for (const r of rows) r.equityVsBest = r.equity - best;
-      return rows;
-    };
+    return cands.map((c, k) => {
+      const r = rosterEquityCounts(sc, rosters[k], field, null);
+      const eq = w.playoff_team * (r.c1 / r.S) + w.R3 * (r.c2 / r.S)
+               + w.finals * (r.c3 / r.S) + w.finals_top * (r.cTop / r.S);
+      return { c1: r.c1, c2: r.c2, c3: r.c3, cTop: r.cTop, S: r.S, eq };
+    });
+  }
 
-    for (let b = 0; b < nBatches; b++) {
-      const bots = makeBotRostersRandomized(D.nTeams, seed + 1000 + b * 131).slice(0, D.nTeams - 1);
-      const union = new Set();
-      for (const r of rosters) for (const i of r) union.add(i);
-      for (const bt of bots) for (const i of bt) union.add(i);
-      const playerList = [...union];
-      const sc = drawScores(playerList, batchSize, seed + b * 7919);
-      const field = finishOpponentField(sc, bots);
-      for (let k = 0; k < cands.length; k++) {
-        const r = rosterEquityCounts(sc, rosters[k], field, null);
-        const a = acc[k];
-        a.c1 += r.c1; a.c2 += r.c2; a.c3 += r.c3; a.cTop += r.cTop; a.S += r.S;
-        a.eqBatches.push(w.playoff_team * (r.c1 / r.S) + w.R3 * (r.c2 / r.S)
-                         + w.finals * (r.c3 / r.S) + w.finals_top * (r.cTop / r.S));
-      }
-      if (onBatch) onBatch(assemble(), b + 1, nBatches);
+  function newAcc(n) {
+    return Array.from({ length: n }, () => ({ c1: 0, c2: 0, c3: 0, cTop: 0, S: 0, eqBatches: [] }));
+  }
+
+  function mergeBatchIntoAcc(acc, batchResults) {
+    for (let k = 0; k < batchResults.length; k++) {
+      const r = batchResults[k], a = acc[k];
+      a.c1 += r.c1; a.c2 += r.c2; a.c3 += r.c3; a.cTop += r.cTop; a.S += r.S;
+      a.eqBatches.push(r.eq);
     }
-    return assemble();
+  }
+
+  function assembleRows(cands, acc) {
+    const w = D.weights;
+    const rows = cands.map((c, k) => {
+      const a = acc[k];
+      const S = a.S || 1;
+      const pP = a.c1 / S, pR = a.c2 / S, pF = a.c3 / S, pT = a.cTop / S;
+      const eq = w.playoff_team * pP + w.R3 * pR + w.finals * pF + w.finals_top * pT;
+      let se = null;
+      if (a.eqBatches.length >= 2) {
+        const m = a.eqBatches.reduce((x, y) => x + y, 0) / a.eqBatches.length;
+        const v = a.eqBatches.reduce((x, y) => x + (y - m) ** 2, 0) / (a.eqBatches.length - 1);
+        // c4 correction: with few batches the sqrt of the sample variance is biased LOW
+        // (badly at n=2, ~20% under). Dividing by c4(n) makes the displayed +/- honest.
+        const C4 = { 2: 0.7979, 3: 0.8862, 4: 0.9213, 5: 0.9400, 6: 0.9515, 7: 0.9594,
+                     8: 0.9650, 9: 0.9693, 10: 0.9727, 11: 0.9754, 12: 0.9776 };
+        const c4 = C4[a.eqBatches.length] || 1.0;
+        se = Math.sqrt(v / a.eqBatches.length) / c4;
+      }
+      return {
+        idx: c, name: D.players[c].name, position: D.positions[posArr[c]],
+        team: D.players[c].teamName, adp: adpArr[c], muSrc: D.players[c].src, mu: muArr[c],
+        P_playoff: pP, P_R3: pR, P_finals: pF, P_finals_top: pT, equity: eq, equitySE: se,
+        simsDone: a.S,
+      };
+    });
+    rows.sort((x, y) => y.equity - x.equity);
+    const best = rows.length ? rows[0].equity : 0;
+    for (const r of rows) r.equityVsBest = r.equity - best;
+    return rows;
+  }
+
+  function batchPlan(nSims) {
+    const nBatches = Math.max(3, Math.ceil(nSims / 1200));
+    const batchSize = Math.ceil(nSims / nBatches);
+    return { nBatches, batchSize };
+  }
+
+  function recommend(myIdx, draftedSet, draftSlot, nSims, topK, seed, onBatch) {
+    const { cands, rosters } = prepareCandidates(myIdx, draftedSet, draftSlot, topK);
+    const { nBatches, batchSize } = batchPlan(nSims);
+    const acc = newAcc(cands.length);
+    // Early stopping: once the leader's edge over the runner-up is comfortably larger
+    // than the noise in both estimates (3x combined SE), further batches won't change
+    // the ranking -- skip them. Requires >=3 batches first so SE itself isn't too noisy.
+    const MIN_BATCHES_BEFORE_STOP = 3;
+    for (let b = 0; b < nBatches; b++) {
+      mergeBatchIntoAcc(acc, runBatch(rosters, cands, seed, b, batchSize));
+      const rowsSoFar = assembleRows(cands, acc);
+      if (onBatch) onBatch(rowsSoFar, b + 1, nBatches);
+      if (b + 1 >= MIN_BATCHES_BEFORE_STOP && cands.length >= 2) {
+        const [leader, runnerUp] = rowsSoFar;
+        if (leader.equitySE !== null && runnerUp.equitySE !== null) {
+          const gap = leader.equity - runnerUp.equity;
+          const combinedSE = Math.sqrt(leader.equitySE ** 2 + runnerUp.equitySE ** 2);
+          if (gap > 3 * combinedSE) break;
+        }
+      }
+    }
+    return assembleRows(cands, acc);
   }
 
   return { init, makeRng, drawScores, rosterWeekScores, makeBotRosters, makeBotRostersRandomized,
            buildOpponentField, finishOpponentField, rosterEquity, rosterEquityCounts, autofill, recommend, quantile,
+           prepareCandidates, runBatch, newAcc, mergeBatchIntoAcc, assembleRows, batchPlan,
            _internals: () => ({ posArr, teamArr, adpArr, muArr, byeArr, adpOrder, D }) };
 })();
 
@@ -1232,34 +1310,76 @@ if (typeof module !== 'undefined') module.exports = AppState;
 
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
-  // ---------- worker (falls back to sync if unavailable) ----------
-  let worker = null;
+  // ---------- worker pool (falls back to sync if unavailable) ----------
+  // Monte Carlo batches are independent by construction (each draws its own random seasons
+  // and opponent field), so instead of one worker running all batches sequentially, we split
+  // the batch range across several workers -- one per available CPU core, capped at 4 -- and
+  // merge their partial sums as they stream back. prepareCandidates()/runBatch() are pure
+  // functions of the inputs, so every worker computes the exact same candidate list/rosters
+  // independently and just contributes a disjoint slice of batch indices; no coordination
+  // needed beyond the caller summing the results. (Early stopping only runs in the single-
+  // threaded sync-fallback path -- with several workers already splitting the load, an
+  // early-exit signal would need cross-worker coordination for a benefit that pre-measurement
+  // showed was small anyway, since the closest, most useful picks rarely trigger it.)
+  const hwConcurrency = (typeof navigator !== 'undefined' && navigator.hardwareConcurrency) || 4;
+  const N_WORKERS = Math.max(1, Math.min(hwConcurrency, 4));
+  let workerPool = [];
   try {
-    const src = document.querySelector('#simcore-src').textContent +
-      `\nlet DATA=null;\nonmessage = (e) => {\n  const m = e.data;\n  if (m.cmd === 'init') { DATA = m.data; SimCore.init(DATA); return; }\n  if (m.cmd === 'recommend') {\n    DATA.weights = m.weights;\n    const rows = SimCore.recommend(m.myIdx, new Set(m.drafted), m.slot, m.nSims, m.topK, m.seed,\n      (partial, b, nb) => postMessage({ token: m.token, partial, b, nb }));\n    postMessage({ token: m.token, rows });\n  }\n};`;
-    worker = new Worker(URL.createObjectURL(new Blob([src], { type: 'application/javascript' })));
-    worker.postMessage({ cmd: 'init', data: D });
+    const workerSrc = document.querySelector('#simcore-src').textContent + `
+let DATA = null;
+onmessage = (e) => {
+  const m = e.data;
+  if (m.cmd === 'init') { DATA = m.data; SimCore.init(DATA); return; }
+  if (m.cmd === 'runBatches') {
+    DATA.weights = m.weights;
+    const { cands, rosters } = SimCore.prepareCandidates(m.myIdx, new Set(m.drafted), m.slot, m.topK);
+    for (const b of m.batchIndices) {
+      const batchResults = SimCore.runBatch(rosters, cands, m.seed, b, m.batchSize);
+      postMessage({ token: m.token, workerId: m.workerId, b, batchResults });
+    }
+    postMessage({ token: m.token, workerId: m.workerId, done: true });
+  }
+};`;
+    const blobUrl = URL.createObjectURL(new Blob([workerSrc], { type: 'application/javascript' }));
+    for (let i = 0; i < N_WORKERS; i++) {
+      const w = new Worker(blobUrl);
+      w.postMessage({ cmd: 'init', data: D });
+      workerPool.push(w);
+    }
   } catch (e) {
-    worker = null;
+    workerPool = [];
   }
 
   function computeRecs(myIdx, drafted, slot, onProgress, onDone) {
     const token = ++computeToken;
     const weights = readWeights();
-    if (worker) {
-      const handler = (e) => {
-        if (e.data.token !== token) return;
-        if (e.data.partial) {
-          if (token === computeToken) onProgress(e.data.partial, e.data.b, e.data.nb);
-          return;
-        }
-        worker.removeEventListener('message', handler);
-        if (token === computeToken) onDone(e.data.rows);
-      };
-      worker.addEventListener('message', handler);
-      worker.postMessage({ cmd: 'recommend', myIdx, drafted: [...drafted], slot,
-                           nSims: simSettings.nSims, topK: simSettings.topK, seed: simSettings.seed,
-                           weights, token });
+    if (workerPool.length) {
+      D.weights = weights;   // assembleRows() below reads D.weights on the main thread
+      const { cands, rosters } = SimCore.prepareCandidates(myIdx, drafted, slot, simSettings.topK);
+      const { nBatches, batchSize } = SimCore.batchPlan(simSettings.nSims);
+      const acc = SimCore.newAcc(cands.length);
+      let batchesDone = 0, workersDone = 0;
+      const handlers = [];
+      const cleanup = () => { for (let i = 0; i < workerPool.length; i++) workerPool[i].removeEventListener('message', handlers[i]); };
+      for (let i = 0; i < workerPool.length; i++) {
+        const handler = (e) => {
+          if (e.data.token !== token) return;
+          if (e.data.done) { workersDone++; if (workersDone === workerPool.length) { cleanup(); if (token === computeToken) onDone(SimCore.assembleRows(cands, acc)); } return; }
+          SimCore.mergeBatchIntoAcc(acc, e.data.batchResults);
+          batchesDone++;
+          if (token === computeToken) onProgress(SimCore.assembleRows(cands, acc), batchesDone, nBatches);
+        };
+        handlers.push(handler);
+        workerPool[i].addEventListener('message', handler);
+      }
+      // Round-robin the batch indices across workers so each gets a roughly equal share.
+      const batchIndicesFor = Array.from({ length: workerPool.length }, () => []);
+      for (let b = 0; b < nBatches; b++) batchIndicesFor[b % workerPool.length].push(b);
+      for (let i = 0; i < workerPool.length; i++) {
+        workerPool[i].postMessage({ cmd: 'runBatches', myIdx, drafted: [...drafted], slot,
+                                    topK: simSettings.topK, seed: simSettings.seed, batchSize,
+                                    batchIndices: batchIndicesFor[i], weights, token, workerId: i });
+      }
     } else {
       setTimeout(() => {
         D.weights = weights;
