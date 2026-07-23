@@ -1,0 +1,1507 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hoopes Football · Sim Draft Room</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Inter:wght@300;400;500&display=swap');
+:root{
+  --bg:#090e1a; --panel:#111827; --panel-2:#0d1424; --line:#1e2d47;
+  --ink:#e2e8f0; --muted:#64748b;
+  --qb:#e4536b; --rb:#3ec98e; --wr:#4e9df5; --te:#f2a73b;
+  --gold:#00d4aa; --gold-ink:#062019;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--bg);color:var(--ink);font:15px/1.45 'Inter',system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+button{font:inherit;cursor:pointer;border:0}
+.mono{font-family:ui-monospace,"SF Mono",Consolas,Menlo,monospace}
+
+/* header */
+header{display:flex;align-items:baseline;gap:14px;padding:14px 18px;border-bottom:1px solid var(--line)}
+.wordmark{font-family:'Space Grotesk',sans-serif;font-weight:700;letter-spacing:-0.3px;font-size:16px}
+.wordmark b{color:var(--gold)}
+.hoopes-crosslink{color:var(--muted);text-decoration:none;font-size:12px;letter-spacing:.04em}
+.hoopes-crosslink:hover{color:var(--gold)}
+#model-note{margin-left:auto;color:var(--muted);font-size:11.5px;letter-spacing:.02em}
+
+/* pick tracker strip — the room's scoreboard */
+.tracker{display:flex;flex-wrap:wrap;gap:10px 26px;align-items:center;padding:11px 18px;
+  background:var(--panel);border-bottom:1px solid var(--line);
+  font-family:ui-monospace,"SF Mono",Consolas,monospace;font-size:13.5px}
+.tracker .lbl{color:var(--muted);text-transform:uppercase;font-size:10px;letter-spacing:.16em;display:block}
+#trk-clock{font-weight:700}
+#trk-clock.mine{color:var(--gold)}
+body.on-clock .tracker{box-shadow:inset 0 -2px 0 var(--gold)}
+
+/* layout */
+.grid{display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:18px;padding:18px;max-width:1220px;margin:0 auto}
+@media (max-width:940px){.grid{grid-template-columns:1fr}.rail{order:-1}}
+section h2{font-family:'Space Grotesk',sans-serif;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin:0 0 10px}
+
+/* player board */
+.board-tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+#search{flex:1;min-width:180px;background:var(--panel);border:1px solid var(--line);color:var(--ink);
+  padding:9px 12px;border-radius:8px;outline:none}
+#search:focus{border-color:var(--gold)}
+.pos-filter{display:flex;gap:4px}
+.pos-filter button{background:var(--panel);color:var(--muted);padding:7px 11px;border-radius:7px;border:1px solid var(--line);font-size:12.5px;font-weight:600}
+.pos-filter button.active{color:var(--ink);border-color:var(--muted)}
+.toggle{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:12.5px}
+
+.prow{display:flex;align-items:center;gap:10px;padding:8px 10px;border-left:3px solid transparent;
+  border-bottom:1px solid var(--line)}
+.prow.pos-QB{border-left-color:var(--qb)}
+.prow.pos-RB{border-left-color:var(--rb)}
+.prow.pos-WR{border-left-color:var(--wr)}
+.prow.pos-TE{border-left-color:var(--te)}
+.prow.drafted{opacity:.38}
+.pname{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pmeta{color:var(--muted);font-size:12px;white-space:nowrap}
+.padp{margin-left:auto;font-family:ui-monospace,Consolas,monospace;color:var(--muted);font-size:13px;min-width:44px;text-align:right}
+.gone{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.08em}
+
+/* chips: the draft-board sticker language */
+.chip{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.06em;padding:2.5px 6px;border-radius:4px;color:#10141b}
+.chip.pos-QB{background:var(--qb)} .chip.pos-RB{background:var(--rb)}
+.chip.pos-WR{background:var(--wr)} .chip.pos-TE{background:var(--te)}
+
+/* buttons */
+.btn{background:var(--panel-2);color:var(--ink);border:1px solid var(--line);padding:6px 11px;border-radius:7px;font-size:12.5px;font-weight:600;white-space:nowrap}
+.btn:hover{border-color:var(--muted)}
+.btn.gold{background:var(--gold);color:var(--gold-ink);border-color:var(--gold)}
+.btn.ghost{background:transparent;color:var(--muted)}
+.btn:disabled{opacity:.4;cursor:default}
+.btn:focus-visible,#search:focus-visible{outline:2px solid var(--gold);outline-offset:1px}
+
+/* right rail */
+.rail>section{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:16px}
+
+/* recommendations — the signature card stack */
+.rec{display:flex;align-items:center;gap:10px;padding:10px 8px;border-left:3px solid transparent;border-bottom:1px solid var(--line)}
+.rec:last-child{border-bottom:0}
+.rec.pos-QB{border-left-color:var(--qb)} .rec.pos-RB{border-left-color:var(--rb)}
+.rec.pos-WR{border-left-color:var(--wr)} .rec.pos-TE{border-left-color:var(--te)}
+.rec-rank{font-family:ui-monospace,Consolas,monospace;color:var(--muted);font-size:13px;width:16px}
+.rec-main{flex:1;min-width:0}
+.rec-name{font-weight:700;font-size:14px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.rec-meta{color:var(--muted);font-size:11.5px;margin-top:1px}
+.conf{height:3px;background:var(--panel-2);border-radius:2px;margin-top:6px;overflow:hidden}
+.conf-fill{height:100%;background:var(--gold)}
+.rec-conf{font-family:ui-monospace,Consolas,monospace;font-size:12.5px;color:var(--muted);min-width:34px;text-align:right}
+.badge{font-size:9.5px;font-weight:800;letter-spacing:.06em;color:var(--gold);border:1px solid var(--gold);
+  padding:1.5px 5px;border-radius:4px;text-transform:uppercase}
+
+/* roster */
+.rgroup{margin-bottom:10px}
+.rhead{display:flex;align-items:center;gap:8px;margin-bottom:4px}
+.rcount{color:var(--muted);font-size:12px;font-family:ui-monospace,Consolas,monospace}
+.ritem{display:flex;justify-content:space-between;padding:3.5px 2px;font-size:13.5px;border-bottom:1px dashed var(--line)}
+.ritem.none{color:var(--muted)}
+.rmeta{color:var(--muted);font-family:ui-monospace,Consolas,monospace;font-size:12px}
+
+/* log */
+#log{max-height:250px;overflow-y:auto}
+.litem{display:flex;align-items:center;gap:8px;padding:4px 2px;font-size:13px;border-bottom:1px dashed var(--line)}
+.litem.mine .lwho{color:var(--gold);font-weight:700}
+.lnum{font-family:ui-monospace,Consolas,monospace;color:var(--muted);font-size:12px;width:38px}
+.lwho{margin-left:auto;color:var(--muted);font-size:11.5px}
+.lrm{padding:1px 7px}
+.log-actions{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.file-btn{position:relative;overflow:hidden}
+.file-btn input{position:absolute;inset:0;opacity:0;cursor:pointer}
+
+.empty{color:var(--muted);font-size:13px;padding:8px 2px}
+
+/* setup overlay */
+#setup{position:fixed;inset:0;background:rgba(13,17,24,.94);display:flex;align-items:center;justify-content:center;z-index:10}
+#setup.hidden{display:none}
+.setup-card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:28px;max-width:380px;width:92%}
+.setup-card h1{font-size:17px;letter-spacing:.12em;text-transform:uppercase;margin-bottom:6px}
+.setup-card h1 b{color:var(--gold)}
+.setup-card p{color:var(--muted);font-size:13px;margin-bottom:18px}
+.setup-card label{display:block;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+#slot{width:100%;background:var(--panel-2);color:var(--ink);border:1px solid var(--line);padding:10px;border-radius:8px;margin-bottom:16px}
+.setup-actions{display:flex;gap:10px;align-items:center}
+.setup-actions .btn{padding:10px 18px}
+
+@media (prefers-reduced-motion:no-preference){
+  .rec{transition:background .12s}
+  .rec:hover{background:var(--panel-2)}
+}
+
+/* sim additions */
+.sim-controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;color:var(--muted);font-size:12px}
+.sim-controls select{background:var(--panel-2);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:4px 6px}
+.rec-eq{text-align:right;min-width:56px}
+.eq-num{font-family:ui-monospace,Consolas,monospace;font-size:15px;font-weight:700;color:var(--gold)}
+.eq-lbl{font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.rec-meta.mono{font-family:ui-monospace,Consolas,monospace;font-size:10.5px}
+.badge.src{color:var(--rb);border-color:var(--rb)}
+.badge.game{color:var(--wr);border-color:var(--wr)}
+.dot{display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--rb);vertical-align:middle;margin-left:2px}
+.computing{color:var(--muted);font-size:13px;padding:14px 4px;animation:pulse 1.2s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:.5}50%{opacity:1}}
+.weights{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:12px;padding-top:10px;border-top:1px dashed var(--line);font-size:11.5px;color:var(--muted)}
+.weights input{width:64px;background:var(--panel-2);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:4px 6px}
+.wlbl{letter-spacing:.14em;text-transform:uppercase;font-size:10px}
+.noise-note{color:var(--muted);font-size:11px;margin-top:8px;line-height:1.4}
+.progress-track{height:3px;background:var(--panel-2);border-radius:2px;overflow:hidden;margin-bottom:8px}
+#sim-progress{height:100%;width:0%;background:var(--gold);transition:width .3s}
+.se{font-size:10.5px;color:var(--muted);font-weight:400}
+</style>
+</head>
+<body>
+
+<div id="setup">
+  <div class="setup-card">
+    <h1>Hoopes <b>Sim Draft Room</b></h1>
+    <p>12-team best ball · 18 rounds · picks ranked by Monte Carlo tournament equity, simulated live in this page with your projections.</p>
+    <label for="slot">Your draft slot</label>
+    <select id="slot"></select>
+    <div class="setup-actions">
+      <button id="start" class="btn gold">Start draft</button>
+      <label class="btn ghost file-btn">Resume from file<input id="setup-import" type="file" accept=".json"></label>
+    </div>
+  </div>
+</div>
+
+<header>
+  <a class="hoopes-crosslink" href="https://hoopesfootball.com">← Hoopes Football</a>
+  <div class="wordmark">/ <b>Sim Draft Room</b></div>
+  <div id="model-note"></div>
+</header>
+
+<div class="tracker">
+  <div><span class="lbl">Now</span><span id="trk-current">–</span></div>
+  <div><span class="lbl">Clock</span><span id="trk-clock">–</span></div>
+  <div><span class="lbl">You</span><span id="trk-next">–</span></div>
+</div>
+
+<div class="grid">
+  <main>
+    <section>
+      <h2>Player board</h2>
+      <div class="board-tools">
+        <input id="search" type="search" placeholder="Search players…" autocomplete="off">
+        <div class="pos-filter">
+          <button data-pos="ALL" class="active">All</button>
+          <button data-pos="QB">QB</button>
+          <button data-pos="RB">RB</button>
+          <button data-pos="WR">WR</button>
+          <button data-pos="TE">TE</button>
+        </div>
+        <label class="toggle"><input id="show-drafted" type="checkbox"> show drafted</label>
+      </div>
+      <div id="board"></div>
+    </section>
+  </main>
+
+  <aside class="rail">
+    <section>
+      <h2>Tournament equity — your next pick</h2>
+      <div class="sim-controls">
+        <label>Sims <select id="sims-sel">
+          <option value="2000">2,000 (fast)</option>
+          <option value="5000" selected>5,000</option>
+          <option value="10000">10,000</option>
+          <option value="20000">20,000 (max)</option>
+        </select></label>
+        <label>Candidates <select id="cands-sel">
+          <option value="5" selected>5</option>
+          <option value="8">8</option>
+          <option value="12">12</option>
+        </select></label>
+        <button id="reroll" class="btn ghost" title="Re-run with fresh random seasons">Re-roll</button>
+      </div>
+      <div class="progress-track"><div id="sim-progress"></div></div>
+      <div id="recs"></div>
+      <div class="weights">
+        <span class="wlbl">Equity weights</span>
+        <label>Playoff <input id="w-playoff" type="number" step="any"></label>
+        <label>R3 <input id="w-r3" type="number" step="any"></label>
+        <label>Finals <input id="w-finals" type="number" step="any"></label>
+        <label>Top-10 <input id="w-top" type="number" step="any"></label>
+        <button id="apply-weights" class="btn">Apply</button>
+      </div>
+      <div class="noise-note">Each equity shows ± its standard error, estimated across sim batches.
+      If two candidates' ranges overlap, the ordering is a coin flip — raise sims (or Re-roll and
+      compare) before acting on it. Every batch also re-draws the opponent room, so estimates
+      average over field behavior, not just player scoring.</div>
+    </section>
+    <section>
+      <h2>My roster</h2>
+      <div id="roster"></div>
+    </section>
+    <section>
+      <h2>Pick log</h2>
+      <div id="log"></div>
+      <div class="log-actions">
+        <button id="undo" class="btn">Undo last</button>
+        <button id="export" class="btn">Export draft</button>
+        <label class="btn file-btn">Import<input id="import" type="file" accept=".json"></label>
+        <button id="reset" class="btn ghost">Reset</button>
+      </div>
+    </section>
+  </aside>
+</div>
+
+<script id="sim-data" type="application/json">{"players": [{"name": "Jahmyr Gibbs", "pos": 1, "team": 10, "teamName": "DET", "adp": 1.1, "bye": 6, "mu": 19.923961639404297, "src": "u"}, {"name": "Bijan Robinson", "pos": 1, "team": 1, "teamName": "ATL", "adp": 2.0, "bye": 11, "mu": 18.250473022460938, "src": "u"}, {"name": "Ja'Marr Chase", "pos": 2, "team": 6, "teamName": "CIN", "adp": 3.1, "bye": 6, "mu": 14.870305061340332, "src": "u"}, {"name": "Puka Nacua", "pos": 2, "team": 16, "teamName": "LA", "adp": 4.0, "bye": 11, "mu": 15.772721290588379, "src": "u"}, {"name": "Jaxon Smith-Njigba", "pos": 2, "team": 27, "teamName": "SEA", "adp": 5.4, "bye": 11, "mu": 13.025348663330078, "src": "u"}, {"name": "Christian McCaffrey", "pos": 1, "team": 28, "teamName": "SF", "adp": 6.4, "bye": 8, "mu": 17.534822463989258, "src": "u"}, {"name": "Amon-Ra St. Brown", "pos": 2, "team": 10, "teamName": "DET", "adp": 7.2, "bye": 6, "mu": 14.64747428894043, "src": "u"}, {"name": "Jonathan Taylor", "pos": 1, "team": 13, "teamName": "IND", "adp": 7.9, "bye": 13, "mu": 18.321277618408203, "src": "u"}, {"name": "CeeDee Lamb", "pos": 2, "team": 8, "teamName": "DAL", "adp": 9.6, "bye": 14, "mu": 13.546653747558594, "src": "u"}, {"name": "Justin Jefferson", "pos": 2, "team": 20, "teamName": "MIN", "adp": 10.0, "bye": 6, "mu": 12.920690536499023, "src": "u"}, {"name": "Ashton Jeanty", "pos": 1, "team": 18, "teamName": "LV", "adp": 11.2, "bye": 13, "mu": 14.572772979736328, "src": "u"}, {"name": "James Cook", "pos": 1, "team": 3, "teamName": "BUF", "adp": 11.6, "bye": 7, "mu": 17.279712677001953, "src": "u"}, {"name": "Saquon Barkley", "pos": 1, "team": 25, "teamName": "PHI", "adp": 13.4, "bye": 10, "mu": 14.577520370483398, "src": "u"}, {"name": "Omarion Hampton", "pos": 1, "team": 17, "teamName": "LAC", "adp": 14.5, "bye": 7, "mu": 14.239383697509766, "src": "u"}, {"name": "Kenneth Walker III", "pos": 1, "team": 15, "teamName": "KC", "adp": 15.9, "bye": 5, "mu": 13.415363311767578, "src": "u"}, {"name": "Chase Brown", "pos": 1, "team": 6, "teamName": "CIN", "adp": 16.4, "bye": 6, "mu": 14.169815063476562, "src": "u"}, {"name": "De'Von Achane", "pos": 1, "team": 19, "teamName": "MIA", "adp": 17.3, "bye": 6, "mu": 16.52128791809082, "src": "u"}, {"name": "Derrick Henry", "pos": 1, "team": 2, "teamName": "BAL", "adp": 17.8, "bye": 13, "mu": 13.352590560913086, "src": "u"}, {"name": "A.J. Brown", "pos": 2, "team": 21, "teamName": "NE", "adp": 18.2, "bye": 11, "mu": 11.388264656066895, "src": "u"}, {"name": "Drake London", "pos": 2, "team": 1, "teamName": "ATL", "adp": 19.8, "bye": 11, "mu": 11.888874053955078, "src": "u"}, {"name": "Brock Bowers", "pos": 3, "team": 18, "teamName": "LV", "adp": 20.6, "bye": 13, "mu": 9.953791618347168, "src": "u"}, {"name": "Nico Collins", "pos": 2, "team": 12, "teamName": "HOU", "adp": 22.3, "bye": 8, "mu": 11.90295124053955, "src": "u"}, {"name": "George Pickens", "pos": 2, "team": 8, "teamName": "DAL", "adp": 23.5, "bye": 14, "mu": 12.06015396118164, "src": "u"}, {"name": "Jeremiyah Love", "pos": 1, "team": 0, "teamName": "ARI", "adp": 24.4, "bye": 14, "mu": 12.40746021270752, "src": "m"}, {"name": "Rashee Rice", "pos": 2, "team": 15, "teamName": "KC", "adp": 25.3, "bye": 5, "mu": 12.52906322479248, "src": "u"}, {"name": "DeVonta Smith", "pos": 2, "team": 25, "teamName": "PHI", "adp": 26.3, "bye": 10, "mu": 12.258237838745117, "src": "u"}, {"name": "Breece Hall", "pos": 1, "team": 24, "teamName": "NYJ", "adp": 28.0, "bye": 13, "mu": 14.279253959655762, "src": "u"}, {"name": "Trey McBride", "pos": 3, "team": 0, "teamName": "ARI", "adp": 28.7, "bye": 14, "mu": 11.396839141845703, "src": "u"}, {"name": "Chris Olave", "pos": 2, "team": 22, "teamName": "NO", "adp": 29.7, "bye": 8, "mu": 11.875436782836914, "src": "u"}, {"name": "Zay Flowers", "pos": 2, "team": 2, "teamName": "BAL", "adp": 30.4, "bye": 13, "mu": 11.970890045166016, "src": "u"}, {"name": "Kyren Williams", "pos": 1, "team": 16, "teamName": "LA", "adp": 31.3, "bye": 11, "mu": 12.279548645019531, "src": "u"}, {"name": "Tee Higgins", "pos": 2, "team": 6, "teamName": "CIN", "adp": 32.4, "bye": 6, "mu": 10.671035766601562, "src": "u"}, {"name": "Emeka Egbuka", "pos": 2, "team": 29, "teamName": "TB", "adp": 32.6, "bye": 10, "mu": 10.632173538208008, "src": "u"}, {"name": "Ladd McConkey", "pos": 2, "team": 17, "teamName": "LAC", "adp": 35.3, "bye": 7, "mu": 10.886919021606445, "src": "u"}, {"name": "Josh Allen", "pos": 0, "team": 3, "teamName": "BUF", "adp": 35.5, "bye": 7, "mu": 21.080787658691406, "src": "u"}, {"name": "Travis Etienne Jr.", "pos": 1, "team": 22, "teamName": "NO", "adp": 35.7, "bye": 8, "mu": 11.874383926391602, "src": "u"}, {"name": "Javonte Williams", "pos": 1, "team": 8, "teamName": "DAL", "adp": 36.3, "bye": 14, "mu": 13.010475158691406, "src": "u"}, {"name": "Malik Nabers", "pos": 2, "team": 23, "teamName": "NYG", "adp": 38.3, "bye": 8, "mu": 10.379591941833496, "src": "m"}, {"name": "Tetairoa McMillan", "pos": 2, "team": 4, "teamName": "CAR", "adp": 38.7, "bye": 5, "mu": 11.099126815795898, "src": "u"}, {"name": "Garrett Wilson", "pos": 2, "team": 24, "teamName": "NYJ", "adp": 39.3, "bye": 13, "mu": 11.272777557373047, "src": "u"}, {"name": "Josh Jacobs", "pos": 1, "team": 11, "teamName": "GB", "adp": 40.3, "bye": 11, "mu": 12.620429992675781, "src": "u"}, {"name": "Jaylen Waddle", "pos": 2, "team": 9, "teamName": "DEN", "adp": 41.9, "bye": 10, "mu": 9.687762260437012, "src": "u"}, {"name": "Cam Skattebo", "pos": 1, "team": 23, "teamName": "NYG", "adp": 43.6, "bye": 8, "mu": 11.771857261657715, "src": "m"}, {"name": "Terry McLaurin", "pos": 2, "team": 32, "teamName": "WAS", "adp": 44.3, "bye": 7, "mu": 9.901349067687988, "src": "u"}, {"name": "Luther Burden", "pos": 2, "team": 5, "teamName": "CHI", "adp": 44.4, "bye": 10, "mu": 9.619283676147461, "src": "u"}, {"name": "Mike Evans", "pos": 2, "team": 28, "teamName": "SF", "adp": 45.9, "bye": 8, "mu": 10.379591941833496, "src": "m"}, {"name": "Colston Loveland", "pos": 3, "team": 5, "teamName": "CHI", "adp": 46.9, "bye": 10, "mu": 12.031779289245605, "src": "u"}, {"name": "David Montgomery", "pos": 1, "team": 12, "teamName": "HOU", "adp": 47.8, "bye": 8, "mu": 10.490031242370605, "src": "u"}, {"name": "Davante Adams", "pos": 2, "team": 16, "teamName": "LA", "adp": 49.7, "bye": 11, "mu": 9.462418556213379, "src": "u"}, {"name": "Jameson Williams", "pos": 2, "team": 10, "teamName": "DET", "adp": 50.4, "bye": 6, "mu": 10.1567964553833, "src": "u"}, {"name": "D'Andre Swift", "pos": 1, "team": 5, "teamName": "CHI", "adp": 50.5, "bye": 10, "mu": 12.405068397521973, "src": "u"}, {"name": "TreVeyon Henderson", "pos": 1, "team": 21, "teamName": "NE", "adp": 52.5, "bye": 11, "mu": 12.751983642578125, "src": "u"}, {"name": "Quinshon Judkins", "pos": 1, "team": 7, "teamName": "CLE", "adp": 53.8, "bye": 11, "mu": 11.552033424377441, "src": "u"}, {"name": "Bucky Irving", "pos": 1, "team": 29, "teamName": "TB", "adp": 54.4, "bye": 10, "mu": 12.6002197265625, "src": "u"}, {"name": "Lamar Jackson", "pos": 0, "team": 2, "teamName": "BAL", "adp": 55.3, "bye": 13, "mu": 18.192920684814453, "src": "u"}, {"name": "Bhayshul Tuten", "pos": 1, "team": 14, "teamName": "JAX", "adp": 55.8, "bye": 7, "mu": 11.266544342041016, "src": "m"}, {"name": "D.J. Moore", "pos": 2, "team": 3, "teamName": "BUF", "adp": 56.5, "bye": 7, "mu": 9.486994743347168, "src": "u"}, {"name": "Christian Watson", "pos": 2, "team": 11, "teamName": "GB", "adp": 56.7, "bye": 11, "mu": 8.874923706054688, "src": "u"}, {"name": "Carnell Tate", "pos": 2, "team": 30, "teamName": "TEN", "adp": 58.4, "bye": 9, "mu": 8.573603630065918, "src": "m"}, {"name": "Rome Odunze", "pos": 2, "team": 5, "teamName": "CHI", "adp": 60.1, "bye": 10, "mu": 9.793834686279297, "src": "u"}, {"name": "Brian Thomas", "pos": 2, "team": 14, "teamName": "JAX", "adp": 61.2, "bye": 7, "mu": 9.188447952270508, "src": "u"}, {"name": "Jadarian Price", "pos": 1, "team": 27, "teamName": "SEA", "adp": 62.7, "bye": 11, "mu": 11.266544342041016, "src": "m"}, {"name": "Jordyn Tyson", "pos": 2, "team": 22, "teamName": "NO", "adp": 63.6, "bye": 8, "mu": 8.573603630065918, "src": "m"}, {"name": "Tyler Warren", "pos": 3, "team": 13, "teamName": "IND", "adp": 64.5, "bye": 13, "mu": 10.300079345703125, "src": "u"}, {"name": "Drake Maye", "pos": 0, "team": 21, "teamName": "NE", "adp": 66.2, "bye": 11, "mu": 20.798263549804688, "src": "u"}, {"name": "Jayden Daniels", "pos": 0, "team": 32, "teamName": "WAS", "adp": 67.1, "bye": 7, "mu": 19.133743286132812, "src": "u"}, {"name": "Parker Washington", "pos": 2, "team": 14, "teamName": "JAX", "adp": 67.1, "bye": 7, "mu": 8.939422607421875, "src": "u"}, {"name": "Joe Burrow", "pos": 0, "team": 6, "teamName": "CIN", "adp": 67.7, "bye": 6, "mu": 16.980690002441406, "src": "u"}, {"name": "Marvin Harrison", "pos": 2, "team": 0, "teamName": "ARI", "adp": 68.0, "bye": 14, "mu": 8.965167045593262, "src": "u"}, {"name": "Caleb Williams", "pos": 0, "team": 5, "teamName": "CHI", "adp": 71.6, "bye": 10, "mu": 19.276695251464844, "src": "u"}, {"name": "Jalen Hurts", "pos": 0, "team": 25, "teamName": "PHI", "adp": 71.8, "bye": 10, "mu": 17.95511245727539, "src": "u"}, {"name": "Tony Pollard", "pos": 1, "team": 30, "teamName": "TEN", "adp": 72.4, "bye": 9, "mu": 11.255785942077637, "src": "u"}, {"name": "Makai Lemon", "pos": 2, "team": 25, "teamName": "PHI", "adp": 73.2, "bye": 10, "mu": 8.573603630065918, "src": "m"}, {"name": "Jaylen Warren", "pos": 1, "team": 26, "teamName": "PIT", "adp": 73.6, "bye": 9, "mu": 11.639142036437988, "src": "u"}, {"name": "Quentin Johnston", "pos": 2, "team": 17, "teamName": "LAC", "adp": 74.7, "bye": 7, "mu": 8.59339714050293, "src": "u"}, {"name": "Rhamondre Stevenson", "pos": 1, "team": 21, "teamName": "NE", "adp": 76.5, "bye": 11, "mu": 11.689218521118164, "src": "u"}, {"name": "DK Metcalf", "pos": 2, "team": 26, "teamName": "PIT", "adp": 77.2, "bye": 9, "mu": 9.637709617614746, "src": "u"}, {"name": "Chuba Hubbard", "pos": 1, "team": 4, "teamName": "CAR", "adp": 77.6, "bye": 5, "mu": 9.717436790466309, "src": "u"}, {"name": "Alec Pierce", "pos": 2, "team": 13, "teamName": "IND", "adp": 79.9, "bye": 13, "mu": 8.312992095947266, "src": "u"}, {"name": "Dak Prescott", "pos": 0, "team": 8, "teamName": "DAL", "adp": 80.9, "bye": 14, "mu": 17.93280792236328, "src": "u"}, {"name": "Justin Herbert", "pos": 0, "team": 17, "teamName": "LAC", "adp": 82.0, "bye": 7, "mu": 17.927183151245117, "src": "u"}, {"name": "Tucker Kraft", "pos": 3, "team": 11, "teamName": "GB", "adp": 82.4, "bye": 11, "mu": 9.898247718811035, "src": "u"}, {"name": "Courtland Sutton", "pos": 2, "team": 9, "teamName": "DEN", "adp": 83.0, "bye": 10, "mu": 9.230508804321289, "src": "u"}, {"name": "Jayden Reed", "pos": 2, "team": 11, "teamName": "GB", "adp": 84.2, "bye": 11, "mu": 8.404206275939941, "src": "m"}, {"name": "Trevor Lawrence", "pos": 0, "team": 14, "teamName": "JAX", "adp": 85.7, "bye": 7, "mu": 18.70450782775879, "src": "u"}, {"name": "RJ Harvey", "pos": 1, "team": 9, "teamName": "DEN", "adp": 86.3, "bye": 10, "mu": 8.41679573059082, "src": "u"}, {"name": "Rico Dowdle", "pos": 1, "team": 26, "teamName": "PIT", "adp": 87.0, "bye": 9, "mu": 9.995426177978516, "src": "u"}, {"name": "Chris Godwin", "pos": 2, "team": 29, "teamName": "TB", "adp": 87.2, "bye": 10, "mu": 8.404206275939941, "src": "m"}, {"name": "Jordan Addison", "pos": 2, "team": 20, "teamName": "MIN", "adp": 89.0, "bye": 6, "mu": 8.198280334472656, "src": "u"}, {"name": "Josh Downs", "pos": 2, "team": 13, "teamName": "IND", "adp": 90.2, "bye": 13, "mu": 8.114579200744629, "src": "u"}, {"name": "Blake Corum", "pos": 1, "team": 16, "teamName": "LA", "adp": 91.6, "bye": 11, "mu": 8.017011642456055, "src": "u"}, {"name": "Patrick Mahomes", "pos": 0, "team": 15, "teamName": "KC", "adp": 93.1, "bye": 5, "mu": 16.63208770751953, "src": "u"}, {"name": "Kyle Monangai", "pos": 1, "team": 5, "teamName": "CHI", "adp": 93.5, "bye": 10, "mu": 8.53160285949707, "src": "u"}, {"name": "Xavier Worthy", "pos": 2, "team": 15, "teamName": "KC", "adp": 94.4, "bye": 5, "mu": 7.884012699127197, "src": "u"}, {"name": "Sam LaPorta", "pos": 3, "team": 10, "teamName": "DET", "adp": 95.2, "bye": 6, "mu": 10.00320053100586, "src": "u"}, {"name": "Brock Purdy", "pos": 0, "team": 28, "teamName": "SF", "adp": 96.2, "bye": 8, "mu": 17.803970336914062, "src": "u"}, {"name": "Ricky Pearsall", "pos": 2, "team": 28, "teamName": "SF", "adp": 96.5, "bye": 8, "mu": 8.784137725830078, "src": "u"}, {"name": "J.K. Dobbins", "pos": 1, "team": 9, "teamName": "DEN", "adp": 98.3, "bye": 10, "mu": 8.777185440063477, "src": "u"}, {"name": "Michael Pittman Jr.", "pos": 2, "team": 26, "teamName": "PIT", "adp": 99.3, "bye": 9, "mu": 8.726009368896484, "src": "u"}, {"name": "Michael Wilson", "pos": 2, "team": 0, "teamName": "ARI", "adp": 100.5, "bye": 14, "mu": 9.468790054321289, "src": "u"}, {"name": "Jonathon Brooks", "pos": 1, "team": 4, "teamName": "CAR", "adp": 101.5, "bye": 5, "mu": 9.74004077911377, "src": "m"}, {"name": "Jaxson Dart", "pos": 0, "team": 23, "teamName": "NYG", "adp": 101.9, "bye": 8, "mu": 16.493911743164062, "src": "u"}, {"name": "Harold Fannin", "pos": 3, "team": 7, "teamName": "CLE", "adp": 104.4, "bye": 11, "mu": 7.843117713928223, "src": "u"}, {"name": "Kyle Pitts", "pos": 3, "team": 1, "teamName": "ATL", "adp": 105.0, "bye": 11, "mu": 7.701903820037842, "src": "u"}, {"name": "Matthew Stafford", "pos": 0, "team": 16, "teamName": "LA", "adp": 106.1, "bye": 11, "mu": 17.92751693725586, "src": "u"}, {"name": "Jakobi Meyers", "pos": 2, "team": 14, "teamName": "JAX", "adp": 106.5, "bye": 7, "mu": 9.095385551452637, "src": "u"}, {"name": "Bo Nix", "pos": 0, "team": 9, "teamName": "DEN", "adp": 107.0, "bye": 10, "mu": 17.35977554321289, "src": "u"}, {"name": "Kenneth Gainwell", "pos": 1, "team": 29, "teamName": "TB", "adp": 107.6, "bye": 10, "mu": 8.41566276550293, "src": "u"}, {"name": "Rachaad White", "pos": 1, "team": 32, "teamName": "WAS", "adp": 108.3, "bye": 7, "mu": 6.9289021492004395, "src": "u"}, {"name": "Jared Goff", "pos": 0, "team": 10, "teamName": "DET", "adp": 109.7, "bye": 6, "mu": 16.07595443725586, "src": "u"}, {"name": "Matthew Golden", "pos": 2, "team": 11, "teamName": "GB", "adp": 110.3, "bye": 11, "mu": 8.404206275939941, "src": "m"}, {"name": "Kyler Murray", "pos": 0, "team": 20, "teamName": "MIN", "adp": 111.4, "bye": 6, "mu": 15.217031478881836, "src": "u"}, {"name": "Jordan Love", "pos": 0, "team": 11, "teamName": "GB", "adp": 112.4, "bye": 11, "mu": 16.80569076538086, "src": "u"}, {"name": "George Kittle", "pos": 3, "team": 28, "teamName": "SF", "adp": 113.2, "bye": 8, "mu": 9.408206939697266, "src": "u"}, {"name": "Wan'Dale Robinson", "pos": 2, "team": 30, "teamName": "TEN", "adp": 113.8, "bye": 9, "mu": 8.921810150146484, "src": "u"}, {"name": "Jordan Mason", "pos": 1, "team": 20, "teamName": "MIN", "adp": 114.5, "bye": 6, "mu": 6.812739849090576, "src": "u"}, {"name": "Romeo Doubs", "pos": 2, "team": 21, "teamName": "NE", "adp": 116.9, "bye": 11, "mu": 7.984251976013184, "src": "u"}, {"name": "Baker Mayfield", "pos": 0, "team": 29, "teamName": "TB", "adp": 118.4, "bye": 10, "mu": 17.111618041992188, "src": "u"}, {"name": "KC Concepcion", "pos": 2, "team": 7, "teamName": "CLE", "adp": 118.4, "bye": 11, "mu": 8.404206275939941, "src": "m"}, {"name": "Aaron Jones", "pos": 1, "team": 20, "teamName": "MIN", "adp": 120.2, "bye": 6, "mu": 7.919778823852539, "src": "u"}, {"name": "Travis Kelce", "pos": 3, "team": 15, "teamName": "KC", "adp": 121.3, "bye": 5, "mu": 8.011530876159668, "src": "u"}, {"name": "Jacory Croskey-Merritt", "pos": 1, "team": 32, "teamName": "WAS", "adp": 121.7, "bye": 7, "mu": 5.8431806564331055, "src": "u"}, {"name": "Tyler Shough", "pos": 0, "team": 22, "teamName": "NO", "adp": 123.6, "bye": 8, "mu": 14.794160842895508, "src": "u"}, {"name": "Jayden Higgins", "pos": 2, "team": 12, "teamName": "HOU", "adp": 124.1, "bye": 8, "mu": 5.73790979385376, "src": "u"}, {"name": "Mark Andrews", "pos": 3, "team": 2, "teamName": "BAL", "adp": 125.7, "bye": 13, "mu": 6.391948223114014, "src": "u"}, {"name": "Khalil Shakir", "pos": 2, "team": 3, "teamName": "BUF", "adp": 126.9, "bye": 7, "mu": 8.002158164978027, "src": "u"}, {"name": "Chris Rodriguez", "pos": 1, "team": 14, "teamName": "JAX", "adp": 127.4, "bye": 7, "mu": 5.375627517700195, "src": "u"}, {"name": "Dalton Kincaid", "pos": 3, "team": 3, "teamName": "BUF", "adp": 128.2, "bye": 7, "mu": 6.759067535400391, "src": "u"}, {"name": "Jake Ferguson", "pos": 3, "team": 8, "teamName": "DAL", "adp": 129.7, "bye": 14, "mu": 9.427210807800293, "src": "u"}, {"name": "Isaiah Likely", "pos": 3, "team": 23, "teamName": "NYG", "adp": 130.0, "bye": 8, "mu": 7.0670623779296875, "src": "m"}, {"name": "Jalen Coker", "pos": 2, "team": 4, "teamName": "CAR", "adp": 131.0, "bye": 5, "mu": 6.612223148345947, "src": "u"}, {"name": "Rashid Shaheed", "pos": 2, "team": 27, "teamName": "SEA", "adp": 131.1, "bye": 11, "mu": 6.607809543609619, "src": "u"}, {"name": "Tyrone Tracy", "pos": 1, "team": 23, "teamName": "NYG", "adp": 133.6, "bye": 8, "mu": 8.108953475952148, "src": "u"}, {"name": "Malik Willis", "pos": 0, "team": 19, "teamName": "MIA", "adp": 133.9, "bye": 6, "mu": 16.105430603027344, "src": "m"}, {"name": "Stefon Diggs", "pos": 2, "team": 21, "teamName": "NE", "adp": 134.3, "bye": 11, "mu": 8.01667594909668, "src": "u"}, {"name": "Dallas Goedert", "pos": 3, "team": 25, "teamName": "PHI", "adp": 135.2, "bye": 10, "mu": 7.041628837585449, "src": "u"}, {"name": "Keaton Mitchell", "pos": 1, "team": 17, "teamName": "LAC", "adp": 137.1, "bye": 7, "mu": 8.48292064666748, "src": "m"}, {"name": "Cam Ward", "pos": 0, "team": 30, "teamName": "TEN", "adp": 139.6, "bye": 9, "mu": 14.022554397583008, "src": "u"}, {"name": "Chig Okonkwo", "pos": 3, "team": 32, "teamName": "WAS", "adp": 140.4, "bye": 7, "mu": 6.624713897705078, "src": "u"}, {"name": "Sam Darnold", "pos": 0, "team": 27, "teamName": "SEA", "adp": 141.0, "bye": 11, "mu": 15.738212585449219, "src": "u"}, {"name": "Travis Hunter", "pos": 2, "team": 14, "teamName": "JAX", "adp": 142.0, "bye": 7, "mu": 8.076473236083984, "src": "m"}, {"name": "C.J. Stroud", "pos": 0, "team": 12, "teamName": "HOU", "adp": 142.7, "bye": 8, "mu": 14.672956466674805, "src": "u"}, {"name": "Woody Marks", "pos": 1, "team": 12, "teamName": "HOU", "adp": 142.8, "bye": 8, "mu": 7.142165184020996, "src": "u"}, {"name": "Omar Cooper Jr.", "pos": 2, "team": 24, "teamName": "NYJ", "adp": 143.9, "bye": 13, "mu": 8.076473236083984, "src": "m"}, {"name": "Jalen McMillan", "pos": 2, "team": 29, "teamName": "TB", "adp": 145.1, "bye": 10, "mu": 8.076473236083984, "src": "m"}, {"name": "Daniel Jones", "pos": 0, "team": 13, "teamName": "IND", "adp": 146.5, "bye": 13, "mu": 15.609428405761719, "src": "u"}, {"name": "Jalen Nailor", "pos": 2, "team": 20, "teamName": "MIN", "adp": 147.6, "bye": 6, "mu": 8.076473236083984, "src": "m"}, {"name": "Isiah Pacheco", "pos": 1, "team": 10, "teamName": "DET", "adp": 148.8, "bye": 6, "mu": 6.74601936340332, "src": "u"}, {"name": "Oronde Gadsden", "pos": 3, "team": 17, "teamName": "LAC", "adp": 149.3, "bye": 7, "mu": 7.064218521118164, "src": "u"}, {"name": "Brenton Strange", "pos": 3, "team": 14, "teamName": "JAX", "adp": 150.7, "bye": 7, "mu": 6.537883758544922, "src": "u"}, {"name": "Hunter Henry", "pos": 3, "team": 21, "teamName": "NE", "adp": 151.5, "bye": 11, "mu": 6.464344024658203, "src": "u"}, {"name": "Jauan Jennings", "pos": 2, "team": 28, "teamName": "SF", "adp": 152.8, "bye": 8, "mu": 7.171250820159912, "src": "u"}, {"name": "Tre Tucker", "pos": 2, "team": 18, "teamName": "LV", "adp": 153.3, "bye": 13, "mu": 6.188479900360107, "src": "u"}, {"name": "Tyjae Spears", "pos": 1, "team": 30, "teamName": "TEN", "adp": 153.4, "bye": 9, "mu": 8.48292064666748, "src": "m"}, {"name": "Denzel Boston", "pos": 2, "team": 7, "teamName": "CLE", "adp": 155.0, "bye": 11, "mu": 8.076473236083984, "src": "m"}, {"name": "Jonah Coleman", "pos": 1, "team": 9, "teamName": "DEN", "adp": 156.3, "bye": 10, "mu": 8.48292064666748, "src": "m"}, {"name": "Juwan Johnson", "pos": 3, "team": 22, "teamName": "NO", "adp": 156.6, "bye": 8, "mu": 5.844294548034668, "src": "u"}, {"name": "Bryce Young", "pos": 0, "team": 4, "teamName": "CAR", "adp": 158.3, "bye": 5, "mu": 13.975427627563477, "src": "u"}, {"name": "Zach Charbonnet", "pos": 1, "team": 27, "teamName": "SEA", "adp": 159.8, "bye": 11, "mu": 6.359781265258789, "src": "u"}, {"name": "Ryan Flournoy", "pos": 2, "team": 8, "teamName": "DAL", "adp": 160.5, "bye": 14, "mu": 5.309480667114258, "src": "u"}, {"name": "Kenyon Sadiq", "pos": 3, "team": 24, "teamName": "NYJ", "adp": 160.9, "bye": 13, "mu": 7.0670623779296875, "src": "m"}, {"name": "Tyler Allgeier", "pos": 1, "team": 0, "teamName": "ARI", "adp": 162.5, "bye": 14, "mu": 4.696717262268066, "src": "u"}, {"name": "Tank Bigsby", "pos": 1, "team": 25, "teamName": "PHI", "adp": 163.4, "bye": 10, "mu": 8.4221773147583, "src": "m"}, {"name": "Deebo Samuel", "pos": 2, "team": 32, "teamName": "WAS", "adp": 164.4, "bye": 7, "mu": 6.4855732917785645, "src": "u"}, {"name": "Tre' Harris", "pos": 2, "team": 17, "teamName": "LAC", "adp": 166.4, "bye": 7, "mu": 8.076473236083984, "src": "m"}, {"name": "Isaac TeSlaa", "pos": 2, "team": 10, "teamName": "DET", "adp": 166.7, "bye": 6, "mu": 8.076473236083984, "src": "m"}, {"name": "Alvin Kamara", "pos": 1, "team": 22, "teamName": "NO", "adp": 168.1, "bye": 8, "mu": 5.641707420349121, "src": "u"}, {"name": "Dalton Schultz", "pos": 3, "team": 12, "teamName": "HOU", "adp": 168.4, "bye": 8, "mu": 6.372337341308594, "src": "u"}, {"name": "T.J. Hockenson", "pos": 3, "team": 20, "teamName": "MIN", "adp": 169.0, "bye": 6, "mu": 6.344639778137207, "src": "u"}, {"name": "Brian Robinson", "pos": 1, "team": 1, "teamName": "ATL", "adp": 171.5, "bye": 11, "mu": 8.4221773147583, "src": "m"}, {"name": "Adonai Mitchell", "pos": 2, "team": 24, "teamName": "NYJ", "adp": 172.1, "bye": 13, "mu": 4.4099602699279785, "src": "u"}, {"name": "De'Zhaun Stribling", "pos": 2, "team": 28, "teamName": "SF", "adp": 172.4, "bye": 8, "mu": 8.076473236083984, "src": "m"}, {"name": "Dylan Sampson", "pos": 1, "team": 7, "teamName": "CLE", "adp": 172.7, "bye": 11, "mu": 8.4221773147583, "src": "m"}, {"name": "Fernando Mendoza", "pos": 0, "team": 18, "teamName": "LV", "adp": 174.6, "bye": 13, "mu": 14.868030548095703, "src": "m"}, {"name": "AJ Barner", "pos": 3, "team": 27, "teamName": "SEA", "adp": 174.7, "bye": 11, "mu": 6.643403053283691, "src": "u"}, {"name": "Antonio Williams", "pos": 2, "team": 32, "teamName": "WAS", "adp": 174.8, "bye": 7, "mu": 8.076473236083984, "src": "m"}, {"name": "Aaron Rodgers", "pos": 0, "team": 26, "teamName": "PIT", "adp": 177.4, "bye": 9, "mu": 13.40719985961914, "src": "u"}, {"name": "Greg Dulcich", "pos": 3, "team": 19, "teamName": "MIA", "adp": 177.7, "bye": 6, "mu": 6.234574317932129, "src": "m"}, {"name": "Jerry Jeudy", "pos": 2, "team": 7, "teamName": "CLE", "adp": 179.5, "bye": 11, "mu": 5.606547832489014, "src": "u"}, {"name": "Gunnar Helm", "pos": 3, "team": 30, "teamName": "TEN", "adp": 180.9, "bye": 9, "mu": 5.010494232177734, "src": "u"}, {"name": "Zachariah Branch", "pos": 2, "team": 1, "teamName": "ATL", "adp": 181.7, "bye": 11, "mu": 8.076473236083984, "src": "m"}, {"name": "Malik Washington", "pos": 2, "team": 19, "teamName": "MIA", "adp": 183.2, "bye": 6, "mu": 4.932061195373535, "src": "u"}, {"name": "Geno Smith", "pos": 0, "team": 24, "teamName": "NYJ", "adp": 184.8, "bye": 13, "mu": 14.04818058013916, "src": "u"}, {"name": "Sean Tucker", "pos": 1, "team": 29, "teamName": "TB", "adp": 184.9, "bye": 10, "mu": 8.4221773147583, "src": "m"}, {"name": "Cade Otton", "pos": 3, "team": 29, "teamName": "TB", "adp": 186.9, "bye": 10, "mu": 6.526348114013672, "src": "u"}, {"name": "Germie Bernard", "pos": 2, "team": 26, "teamName": "PIT", "adp": 187.0, "bye": 9, "mu": 8.076473236083984, "src": "m"}, {"name": "Terrance Ferguson", "pos": 3, "team": 16, "teamName": "LA", "adp": 188.2, "bye": 11, "mu": 5.918262004852295, "src": "m"}, {"name": "Calvin Ridley", "pos": 2, "team": 30, "teamName": "TEN", "adp": 188.7, "bye": 9, "mu": 8.076473236083984, "src": "m"}, {"name": "Dontayvion Wicks", "pos": 2, "team": 11, "teamName": "GB", "adp": 190.5, "bye": 11, "mu": 8.076473236083984, "src": "m"}, {"name": "Emmett Johnson", "pos": 1, "team": 15, "teamName": "KC", "adp": 190.8, "bye": 5, "mu": 8.4221773147583, "src": "m"}, {"name": "Ray Davis", "pos": 1, "team": 3, "teamName": "BUF", "adp": 191.8, "bye": 7, "mu": 8.4221773147583, "src": "m"}, {"name": "Pat Freiermuth", "pos": 3, "team": 26, "teamName": "PIT", "adp": 192.6, "bye": 9, "mu": 5.781069278717041, "src": "u"}, {"name": "Jaydon Blue", "pos": 1, "team": 8, "teamName": "DAL", "adp": 194.3, "bye": 14, "mu": 8.240828514099121, "src": "m"}, {"name": "Tank Dell", "pos": 2, "team": 12, "teamName": "HOU", "adp": 195.1, "bye": 8, "mu": 8.076473236083984, "src": "m"}, {"name": "MarShawn Lloyd", "pos": 1, "team": 11, "teamName": "GB", "adp": 196.5, "bye": 11, "mu": 8.240828514099121, "src": "m"}, {"name": "Jacoby Brissett", "pos": 0, "team": 0, "teamName": "ARI", "adp": 197.1, "bye": 14, "mu": 14.607397079467773, "src": "u"}, {"name": "Darnell Mooney", "pos": 2, "team": 1, "teamName": "ATL", "adp": 197.4, "bye": 11, "mu": 5.597937107086182, "src": "u"}, {"name": "Mike Washington Jr.", "pos": 1, "team": 18, "teamName": "LV", "adp": 198.2, "bye": 13, "mu": 8.240828514099121, "src": "m"}, {"name": "Ted Hurst", "pos": 2, "team": 29, "teamName": "TB", "adp": 202.0, "bye": 10, "mu": 8.076473236083984, "src": "m"}, {"name": "Kaytron Allen", "pos": 1, "team": 32, "teamName": "WAS", "adp": 202.2, "bye": 7, "mu": 8.240828514099121, "src": "m"}, {"name": "Pat Bryant", "pos": 2, "team": 9, "teamName": "DEN", "adp": 204.5, "bye": 10, "mu": 8.076473236083984, "src": "m"}, {"name": "Mike Gesicki", "pos": 3, "team": 6, "teamName": "CIN", "adp": 204.7, "bye": 6, "mu": 5.918262004852295, "src": "m"}, {"name": "Braelon Allen", "pos": 1, "team": 24, "teamName": "NYJ", "adp": 205.2, "bye": 13, "mu": 8.240828514099121, "src": "m"}, {"name": "Elijah Sarratt", "pos": 2, "team": 2, "teamName": "BAL", "adp": 205.5, "bye": 13, "mu": 8.076473236083984, "src": "m"}, {"name": "Cooper Kupp", "pos": 2, "team": 27, "teamName": "SEA", "adp": 206.8, "bye": 11, "mu": 5.404951572418213, "src": "u"}, {"name": "Tua Tagovailoa", "pos": 0, "team": 1, "teamName": "ATL", "adp": 207.1, "bye": 11, "mu": 12.391286849975586, "src": "u"}, {"name": "Keon Coleman", "pos": 2, "team": 3, "teamName": "BUF", "adp": 208.1, "bye": 7, "mu": 4.899117946624756, "src": "u"}, {"name": "Eli Stowers", "pos": 3, "team": 25, "teamName": "PHI", "adp": 209.0, "bye": 10, "mu": 5.918262004852295, "src": "m"}, {"name": "Jaylin Noel", "pos": 2, "team": 12, "teamName": "HOU", "adp": 209.0, "bye": 8, "mu": 8.076473236083984, "src": "m"}, {"name": "Nicholas Singleton", "pos": 1, "team": 30, "teamName": "TEN", "adp": 209.0, "bye": 9, "mu": 8.240828514099121, "src": "m"}, {"name": "Rashod Bateman", "pos": 2, "team": 2, "teamName": "BAL", "adp": 209.5, "bye": 13, "mu": 8.076473236083984, "src": "m"}, {"name": "Colby Parkinson", "pos": 3, "team": 16, "teamName": "LA", "adp": 210.5, "bye": 11, "mu": 4.466583251953125, "src": "u"}, {"name": "Jordan James", "pos": 1, "team": 28, "teamName": "SF", "adp": 210.7, "bye": 8, "mu": 8.240828514099121, "src": "m"}, {"name": "Kayshon Boutte", "pos": 2, "team": 21, "teamName": "NE", "adp": 212.0, "bye": 11, "mu": 5.176374435424805, "src": "u"}, {"name": "Tyquan Thornton", "pos": 2, "team": 15, "teamName": "KC", "adp": 212.0, "bye": 5, "mu": 8.076473236083984, "src": "m"}, {"name": "George Holani", "pos": 1, "team": 27, "teamName": "SEA", "adp": 212.1, "bye": 11, "mu": 8.240828514099121, "src": "m"}, {"name": "David Njoku", "pos": 3, "team": 17, "teamName": "LAC", "adp": 212.6, "bye": 7, "mu": 4.264953136444092, "src": "u"}, {"name": "Evan Engram", "pos": 3, "team": 9, "teamName": "DEN", "adp": 212.6, "bye": 10, "mu": 4.077404022216797, "src": "u"}, {"name": "Troy Franklin", "pos": 2, "team": 9, "teamName": "DEN", "adp": 212.7, "bye": 10, "mu": 5.9549150466918945, "src": "u"}, {"name": "Keenan Allen", "pos": 2, "team": 17, "teamName": "LAC", "adp": 213.0, "bye": 7, "mu": 6.776766777038574, "src": "u"}, {"name": "Demond Claiborne", "pos": 1, "team": 20, "teamName": "MIN", "adp": 213.2, "bye": 6, "mu": 8.240828514099121, "src": "m"}, {"name": "Chris Brazzell II", "pos": 2, "team": 4, "teamName": "CAR", "adp": 213.3, "bye": 5, "mu": 8.076473236083984, "src": "m"}, {"name": "Brandon Aiyuk", "pos": 2, "team": 28, "teamName": "SF", "adp": 213.7, "bye": 8, "mu": 8.076473236083984, "src": "m"}, {"name": "Malachi Fields", "pos": 2, "team": 23, "teamName": "NYG", "adp": 213.7, "bye": 8, "mu": 8.076473236083984, "src": "m"}, {"name": "Christian Kirk", "pos": 2, "team": 12, "teamName": "HOU", "adp": 213.8, "bye": 8, "mu": 8.076473236083984, "src": "m"}, {"name": "Shedeur Sanders", "pos": 0, "team": 7, "teamName": "CLE", "adp": 213.8, "bye": 11, "mu": 14.4622802734375, "src": "m"}, {"name": "Justice Hill", "pos": 1, "team": 2, "teamName": "BAL", "adp": 213.9, "bye": 13, "mu": 8.240828514099121, "src": "m"}, {"name": "Kaelon Black", "pos": 1, "team": 28, "teamName": "SF", "adp": 214.4, "bye": 8, "mu": 8.240828514099121, "src": "m"}, {"name": "Kimani Vidal", "pos": 1, "team": 17, "teamName": "LAC", "adp": 214.4, "bye": 7, "mu": 4.009762287139893, "src": "u"}, {"name": "Tyreek Hill", "pos": 2, "team": 19, "teamName": "MIA", "adp": 214.5, "bye": 6, "mu": 8.076473236083984, "src": "m"}, {"name": "Chris Bell", "pos": 2, "team": 19, "teamName": "MIA", "adp": 214.6, "bye": 6, "mu": 8.076473236083984, "src": "m"}, {"name": "Darnell Washington", "pos": 3, "team": 26, "teamName": "PIT", "adp": 214.7, "bye": 9, "mu": 5.1245903968811035, "src": "m"}, {"name": "Tory Horton", "pos": 2, "team": 27, "teamName": "SEA", "adp": 214.8, "bye": 11, "mu": 8.076473236083984, "src": "m"}, {"name": "Deshaun Watson", "pos": 0, "team": 7, "teamName": "CLE", "adp": 215.0, "bye": 11, "mu": 14.4622802734375, "src": "m"}, {"name": "Devaughn Vele", "pos": 2, "team": 22, "teamName": "NO", "adp": 215.0, "bye": 8, "mu": 8.076473236083984, "src": "m"}, {"name": "Michael Mayer", "pos": 3, "team": 18, "teamName": "LV", "adp": 215.0, "bye": 13, "mu": 3.51094388961792, "src": "u"}, {"name": "Michael Penix", "pos": 0, "team": 1, "teamName": "ATL", "adp": 215.0, "bye": 11, "mu": 12.259306907653809, "src": "u"}, {"name": "Kirk Cousins", "pos": 0, "team": 18, "teamName": "LV", "adp": 215.1, "bye": 13, "mu": 12.57159423828125, "src": "u"}, {"name": "Samaje Perine", "pos": 1, "team": 6, "teamName": "CIN", "adp": 215.1, "bye": 6, "mu": 6.342823028564453, "src": "m"}, {"name": "Andrei Iosivas", "pos": 2, "team": 6, "teamName": "CIN", "adp": 215.2, "bye": 6, "mu": 5.600381851196289, "src": "u"}, {"name": "DJ Giddens", "pos": 1, "team": 13, "teamName": "IND", "adp": 215.2, "bye": 13, "mu": 6.342823028564453, "src": "m"}, {"name": "Ja'Kobi Lane", "pos": 2, "team": 2, "teamName": "BAL", "adp": 215.2, "bye": 13, "mu": 5.021780967712402, "src": "m"}, {"name": "Jack Bech", "pos": 2, "team": 18, "teamName": "LV", "adp": 215.2, "bye": 13, "mu": 5.021780967712402, "src": "m"}, {"name": "James Conner", "pos": 1, "team": 0, "teamName": "ARI", "adp": 215.2, "bye": 14, "mu": 6.342823028564453, "src": "m"}, {"name": "Jalen Tolbert", "pos": 2, "team": 8, "teamName": "DAL", "adp": 215.3, "bye": 14, "mu": 5.021780967712402, "src": "m"}, {"name": "Skyler Bell", "pos": 2, "team": 3, "teamName": "BUF", "adp": 215.3, "bye": 7, "mu": 5.021780967712402, "src": "m"}, {"name": "Caleb Douglas", "pos": 2, "team": 19, "teamName": "MIA", "adp": 215.4, "bye": 6, "mu": 5.021780967712402, "src": "m"}, {"name": "Darius Slayton", "pos": 2, "team": 23, "teamName": "NYG", "adp": 215.4, "bye": 8, "mu": 5.2053446769714355, "src": "u"}, {"name": "Jake Tonges", "pos": 3, "team": 28, "teamName": "SF", "adp": 215.4, "bye": 8, "mu": 3.3474512100219727, "src": "u"}, {"name": "Charlie Kolar", "pos": 3, "team": 17, "teamName": "LAC", "adp": 215.5, "bye": 7, "mu": 5.1245903968811035, "src": "m"}, {"name": "Theo Johnson", "pos": 3, "team": 23, "teamName": "NYG", "adp": 215.5, "bye": 8, "mu": 4.100518703460693, "src": "u"}, {"name": "Emanuel Wilson", "pos": 1, "team": 11, "teamName": "GB", "adp": 215.6, "bye": 11, "mu": 4.109249591827393, "src": "u"}, {"name": "Jaylen Wright", "pos": 1, "team": 19, "teamName": "MIA", "adp": 215.6, "bye": 6, "mu": 6.342823028564453, "src": "m"}, {"name": "Carson Beck", "pos": 0, "team": 0, "teamName": "ARI", "adp": 215.7, "bye": 14, "mu": 14.224143028259277, "src": "m"}, {"name": "Ja'Tavion Sanders", "pos": 3, "team": 4, "teamName": "CAR", "adp": 215.7, "bye": 5, "mu": 5.1245903968811035, "src": "m"}, {"name": "LeQuint Allen", "pos": 1, "team": 14, "teamName": "JAX", "adp": 215.7, "bye": 7, "mu": 6.342823028564453, "src": "m"}, {"name": "Zavion Thomas", "pos": 2, "team": 5, "teamName": "CHI", "adp": 215.7, "bye": 10, "mu": 5.021780967712402, "src": "m"}, {"name": "Chimere Dike", "pos": 2, "team": 30, "teamName": "TEN", "adp": 215.8, "bye": 9, "mu": 5.309597015380859, "src": "u"}, {"name": "Dawson Knox", "pos": 3, "team": 3, "teamName": "BUF", "adp": 215.8, "bye": 7, "mu": 5.151727676391602, "src": "u"}, {"name": "Elijah Arroyo", "pos": 3, "team": 27, "teamName": "SEA", "adp": 215.8, "bye": 11, "mu": 5.1245903968811035, "src": "m"}, {"name": "Jahan Dotson", "pos": 2, "team": 25, "teamName": "PHI", "adp": 215.8, "bye": 10, "mu": 5.021780967712402, "src": "m"}, {"name": "Ty Johnson", "pos": 1, "team": 3, "teamName": "BUF", "adp": 215.8, "bye": 7, "mu": 6.342823028564453, "src": "m"}, {"name": "Adam Randall", "pos": 1, "team": 31, "teamName": "UNK", "adp": 215.9, "bye": 0, "mu": 6.342823028564453, "src": "m"}, {"name": "Brenen Thompson", "pos": 2, "team": 31, "teamName": "UNK", "adp": 215.9, "bye": 0, "mu": 5.021780967712402, "src": "m"}, {"name": "Bryce Lance", "pos": 2, "team": 31, "teamName": "UNK", "adp": 215.9, "bye": 0, "mu": 5.021780967712402, "src": "m"}, {"name": "Chris Brooks", "pos": 1, "team": 11, "teamName": "GB", "adp": 215.9, "bye": 11, "mu": 6.342823028564453, "src": "m"}, {"name": "Chris Myarick", "pos": 3, "team": 31, "teamName": "UNK", "adp": 215.9, "bye": 0, "mu": 5.1245903968811035, "src": "m"}, {"name": "Cole Kmet", "pos": 3, "team": 5, "teamName": "CHI", "adp": 215.9, "bye": 10, "mu": 4.871870994567871, "src": "m"}, {"name": "Devontez Walker", "pos": 2, "team": 2, "teamName": "BAL", "adp": 215.9, "bye": 13, "mu": 5.021780967712402, "src": "m"}, {"name": "Eli Raridon", "pos": 3, "team": 21, "teamName": "NE", "adp": 215.9, "bye": 11, "mu": 4.871870994567871, "src": "m"}, {"name": "Elic Ayomanor", "pos": 2, "team": 30, "teamName": "TEN", "adp": 215.9, "bye": 9, "mu": 5.312515735626221, "src": "u"}, {"name": "Emari Demercado", "pos": 1, "team": 0, "teamName": "ARI", "adp": 215.9, "bye": 14, "mu": 6.342823028564453, "src": "m"}, {"name": "Erick All", "pos": 3, "team": 6, "teamName": "CIN", "adp": 215.9, "bye": 6, "mu": 4.871870994567871, "src": "m"}, {"name": "Erik Ezukanma", "pos": 2, "team": 31, "teamName": "UNK", "adp": 215.9, "bye": 0, "mu": 5.021780967712402, "src": "m"}, {"name": "Feleipe Franks", "pos": 3, "team": 1, "teamName": "ATL", "adp": 215.9, "bye": 11, "mu": 4.383775234222412, "src": "m"}, {"name": "Hollywood Brown", "pos": 2, "team": 15, "teamName": "KC", "adp": 215.9, "bye": 5, "mu": 4.898360252380371, "src": "u"}, {"name": "Isaiah Bond", "pos": 2, "team": 7, "teamName": "CLE", "adp": 215.9, "bye": 11, "mu": 5.021780967712402, "src": "m"}, {"name": "Isaiah Davis", "pos": 1, "team": 24, "teamName": "NYJ", "adp": 215.9, "bye": 13, "mu": 6.342823028564453, "src": "m"}, {"name": "Isaiah Spiller", "pos": 1, "team": 31, "teamName": "UNK", "adp": 215.9, "bye": 0, "mu": 6.342823028564453, "src": "m"}, {"name": "J'Mari Taylor", "pos": 1, "team": 31, "teamName": "UNK", "adp": 215.9, "bye": 0, "mu": 6.342823028564453, "src": "m"}, {"name": "J.J. McCarthy", "pos": 0, "team": 20, "teamName": "MIN", "adp": 215.9, "bye": 6, "mu": 12.066869735717773, "src": "u"}, {"name": "Joshua Cephus", "pos": 2, "team": 14, "teamName": "JAX", "adp": 215.9, "bye": 7, "mu": 5.021780967712402, "src": "m"}, {"name": "Justin Fields", "pos": 0, "team": 24, "teamName": "NYJ", "adp": 215.9, "bye": 13, "mu": 14.224143028259277, "src": "m"}, {"name": "Justin Joly", "pos": 3, "team": 31, "teamName": "UNK", "adp": 215.9, "bye": 0, "mu": 4.383775234222412, "src": "m"}, {"name": "KaVontae Turpin", "pos": 2, "team": 8, "teamName": "DAL", "adp": 215.9, "bye": 14, "mu": 5.021780967712402, "src": "m"}, {"name": "Kalif Raymond", "pos": 2, "team": 10, "teamName": "DET", "adp": 215.9, "bye": 6, "mu": 5.021780967712402, "src": "m"}, {"name": "Kendrick Bourne", "pos": 2, "team": 28, "teamName": "SF", "adp": 215.9, "bye": 8, "mu": 4.954994201660156, "src": "u"}, {"name": "Kevin Coleman Jr.", "pos": 2, "team": 31, "teamName": "UNK", "adp": 215.9, "bye": 0, "mu": 5.021780967712402, "src": "m"}, {"name": "Kyle Williams", "pos": 2, "team": 21, "teamName": "NE", "adp": 215.9, "bye": 11, "mu": 5.021780967712402, "src": "m"}, {"name": "Mac Jones", "pos": 0, "team": 28, "teamName": "SF", "adp": 215.9, "bye": 8, "mu": 12.915301322937012, "src": "m"}, {"name": "Malik Davis", "pos": 1, "team": 31, "teamName": "UNK", "adp": 215.9, "bye": 0, "mu": 6.342823028564453, "src": "m"}, {"name": "Marvin Mims Jr.", "pos": 2, "team": 9, "teamName": "DEN", "adp": 215.9, "bye": 10, "mu": 5.021780967712402, "src": "m"}, {"name": "Mason Taylor", "pos": 3, "team": 24, "teamName": "NYJ", "adp": 215.9, "bye": 13, "mu": 4.248250484466553, "src": "u"}, {"name": "Mike White", "pos": 0, "team": 31, "teamName": "UNK", "adp": 215.9, "bye": 0, "mu": 12.915301322937012, "src": "m"}, {"name": "Miles Boykin", "pos": 2, "team": 31, "teamName": "UNK", "adp": 215.9, "bye": 0, "mu": 5.021780967712402, "src": "m"}, {"name": "Najee Harris", "pos": 1, "team": 17, "teamName": "LAC", "adp": 215.9, "bye": 7, "mu": 6.342823028564453, "src": "m"}, {"name": "Ollie Gordon", "pos": 1, "team": 19, "teamName": "MIA", "adp": 215.9, "bye": 6, "mu": 6.342823028564453, "src": "m"}, {"name": "Oscar Delp", "pos": 3, "team": 22, "teamName": "NO", "adp": 215.9, "bye": 8, "mu": 4.383775234222412, "src": "m"}, {"name": "Rashaad Penny", "pos": 1, "team": 31, "teamName": "UNK", "adp": 215.9, "bye": 0, "mu": 6.342823028564453, "src": "m"}, {"name": "Savion Williams", "pos": 2, "team": 11, "teamName": "GB", "adp": 215.9, "bye": 11, "mu": 5.021780967712402, "src": "m"}, {"name": "Tahj Brooks", "pos": 1, "team": 6, "teamName": "CIN", "adp": 215.9, "bye": 6, "mu": 6.342823028564453, "src": "m"}, {"name": "Tez Johnson", "pos": 2, "team": 29, "teamName": "TB", "adp": 215.9, "bye": 10, "mu": 5.021780967712402, "src": "m"}, {"name": "Treylon Burks", "pos": 2, "team": 32, "teamName": "WAS", "adp": 215.9, "bye": 7, "mu": 5.021780967712402, "src": "m"}, {"name": "Tutu Atwell", "pos": 2, "team": 16, "teamName": "LA", "adp": 215.9, "bye": 11, "mu": 5.021780967712402, "src": "m"}, {"name": "Tyler Badie", "pos": 1, "team": 9, "teamName": "DEN", "adp": 215.9, "bye": 10, "mu": 6.342823028564453, "src": "m"}, {"name": "Xavier Legette", "pos": 2, "team": 4, "teamName": "CAR", "adp": 215.9, "bye": 5, "mu": 5.021780967712402, "src": "m"}, {"name": "A.T. Perry", "pos": 2, "team": 9, "teamName": "DEN", "adp": 216.0, "bye": 10, "mu": 5.021780967712402, "src": "m"}, {"name": "AJ Dillon", "pos": 1, "team": 25, "teamName": "PHI", "adp": 216.0, "bye": 10, "mu": 6.342823028564453, "src": "m"}, {"name": "Aaron Shampklin", "pos": 1, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 6.342823028564453, "src": "m"}, {"name": "Adam Trautman", "pos": 3, "team": 9, "teamName": "DEN", "adp": 216.0, "bye": 10, "mu": 4.383775234222412, "src": "m"}, {"name": "Aidan O'Connell", "pos": 0, "team": 18, "teamName": "LV", "adp": 216.0, "bye": 13, "mu": 12.915301322937012, "src": "m"}, {"name": "Alexander Mattison", "pos": 1, "team": 19, "teamName": "MIA", "adp": 216.0, "bye": 6, "mu": 6.342823028564453, "src": "m"}, {"name": "Ameer Abdullah", "pos": 1, "team": 13, "teamName": "IND", "adp": 216.0, "bye": 13, "mu": 6.342823028564453, "src": "m"}, {"name": "Andy Dalton", "pos": 0, "team": 4, "teamName": "CAR", "adp": 216.0, "bye": 5, "mu": 12.915301322937012, "src": "m"}, {"name": "Anthony Richardson", "pos": 0, "team": 13, "teamName": "IND", "adp": 216.0, "bye": 13, "mu": 12.915301322937012, "src": "m"}, {"name": "Anthony Tyus", "pos": 1, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 6.342823028564453, "src": "m"}, {"name": "Antonio Gibson", "pos": 1, "team": 21, "teamName": "NE", "adp": 216.0, "bye": 11, "mu": 6.342823028564453, "src": "m"}, {"name": "Arian Smith", "pos": 2, "team": 24, "teamName": "NYJ", "adp": 216.0, "bye": 13, "mu": 5.021780967712402, "src": "m"}, {"name": "Ashton Dulin", "pos": 2, "team": 13, "teamName": "IND", "adp": 216.0, "bye": 13, "mu": 5.021780967712402, "src": "m"}, {"name": "Audric Estime", "pos": 1, "team": 22, "teamName": "NO", "adp": 216.0, "bye": 8, "mu": 6.342823028564453, "src": "m"}, {"name": "Austin Ekeler", "pos": 1, "team": 32, "teamName": "WAS", "adp": 216.0, "bye": 7, "mu": 6.342823028564453, "src": "m"}, {"name": "Austin Hooper", "pos": 3, "team": 21, "teamName": "NE", "adp": 216.0, "bye": 11, "mu": 4.383775234222412, "src": "m"}, {"name": "Austin Reed", "pos": 0, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 12.915301322937012, "src": "m"}, {"name": "Bam Knight", "pos": 1, "team": 0, "teamName": "ARI", "adp": 216.0, "bye": 14, "mu": 6.342823028564453, "src": "m"}, {"name": "Barion Brown", "pos": 2, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 5.021780967712402, "src": "m"}, {"name": "Ben Sims", "pos": 3, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 4.383775234222412, "src": "m"}, {"name": "Ben Sinnott", "pos": 3, "team": 32, "teamName": "WAS", "adp": 216.0, "bye": 7, "mu": 4.383775234222412, "src": "m"}, {"name": "Ben Skowronek", "pos": 2, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 5.021780967712402, "src": "m"}, {"name": "Ben Yurosek", "pos": 3, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 4.383775234222412, "src": "m"}, {"name": "Benny Snell", "pos": 1, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 6.342823028564453, "src": "m"}, {"name": "Brady Cook", "pos": 0, "team": 24, "teamName": "NYJ", "adp": 216.0, "bye": 13, "mu": 12.915301322937012, "src": "m"}, {"name": "Brandin Cooks", "pos": 2, "team": 3, "teamName": "BUF", "adp": 216.0, "bye": 7, "mu": 5.021780967712402, "src": "m"}, {"name": "Brandon Dillon", "pos": 3, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 4.383775234222412, "src": "m"}, {"name": "Brashard Smith", "pos": 1, "team": 15, "teamName": "KC", "adp": 216.0, "bye": 5, "mu": 6.342823028564453, "src": "m"}, {"name": "Brenden Rice", "pos": 2, "team": 18, "teamName": "LV", "adp": 216.0, "bye": 13, "mu": 5.021780967712402, "src": "m"}, {"name": "Brevin Jordan", "pos": 3, "team": 12, "teamName": "HOU", "adp": 216.0, "bye": 8, "mu": 4.383775234222412, "src": "m"}, {"name": "Brevyn Spann-Ford", "pos": 3, "team": 8, "teamName": "DAL", "adp": 216.0, "bye": 14, "mu": 4.383775234222412, "src": "m"}, {"name": "Brian Hill", "pos": 1, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 6.342823028564453, "src": "m"}, {"name": "Brock Wright", "pos": 3, "team": 10, "teamName": "DET", "adp": 216.0, "bye": 6, "mu": 4.383775234222412, "src": "m"}, {"name": "Bryant Koback", "pos": 1, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 6.342823028564453, "src": "m"}, {"name": "C.J. Uzomah", "pos": 3, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 4.383775234222412, "src": "m"}, {"name": "CJ Daniels", "pos": 2, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 5.021780967712402, "src": "m"}, {"name": "CJ Donaldson", "pos": 1, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 6.342823028564453, "src": "m"}, {"name": "Cade Klubnik", "pos": 0, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 12.915301322937012, "src": "m"}, {"name": "Cade Stover", "pos": 3, "team": 12, "teamName": "HOU", "adp": 216.0, "bye": 8, "mu": 4.383775234222412, "src": "m"}, {"name": "Caleb Lohner", "pos": 3, "team": 9, "teamName": "DEN", "adp": 216.0, "bye": 10, "mu": 4.383775234222412, "src": "m"}, {"name": "Calvin Austin III", "pos": 2, "team": 26, "teamName": "PIT", "adp": 216.0, "bye": 9, "mu": 5.021780967712402, "src": "m"}, {"name": "Carson Wentz", "pos": 0, "team": 20, "teamName": "MIN", "adp": 216.0, "bye": 6, "mu": 12.915301322937012, "src": "m"}, {"name": "Case Keenum", "pos": 0, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 12.915301322937012, "src": "m"}, {"name": "Casey Washington", "pos": 2, "team": 1, "teamName": "ATL", "adp": 216.0, "bye": 11, "mu": 5.021780967712402, "src": "m"}, {"name": "Cedric Tillman", "pos": 2, "team": 7, "teamName": "CLE", "adp": 216.0, "bye": 11, "mu": 5.021780967712402, "src": "m"}, {"name": "Cedrick Wilson", "pos": 2, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 5.021780967712402, "src": "m"}, {"name": "Chris Herndon", "pos": 3, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 4.383775234222412, "src": "m"}, {"name": "Chris Oladokun", "pos": 0, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 12.915301322937012, "src": "m"}, {"name": "Colbie Young", "pos": 2, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 5.021780967712402, "src": "m"}, {"name": "Cole Beasley", "pos": 2, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 5.021780967712402, "src": "m"}, {"name": "Cole Payton", "pos": 0, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 12.915301322937012, "src": "m"}, {"name": "Connor Heyward", "pos": 3, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 4.383775234222412, "src": "m"}, {"name": "Curtis Samuel", "pos": 2, "team": 3, "teamName": "BUF", "adp": 216.0, "bye": 7, "mu": 5.021780967712402, "src": "m"}, {"name": "D'Onta Foreman", "pos": 1, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 6.342823028564453, "src": "m"}, {"name": "Dallen Bentley", "pos": 3, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 4.383775234222412, "src": "m"}, {"name": "Dallin Holker", "pos": 3, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 4.383775234222412, "src": "m"}, {"name": "Dameon Pierce", "pos": 1, "team": 15, "teamName": "KC", "adp": 216.0, "bye": 5, "mu": 6.342823028564453, "src": "m"}, {"name": "Damien Harris", "pos": 1, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 6.342823028564453, "src": "m"}, {"name": "Damien Martinez", "pos": 1, "team": 11, "teamName": "GB", "adp": 216.0, "bye": 11, "mu": 6.342823028564453, "src": "m"}, {"name": "Daniel Bellinger", "pos": 3, "team": 23, "teamName": "NYG", "adp": 216.0, "bye": 8, "mu": 4.383775234222412, "src": "m"}, {"name": "Dante Pettis", "pos": 2, "team": 22, "teamName": "NO", "adp": 216.0, "bye": 8, "mu": 5.021780967712402, "src": "m"}, {"name": "Dare Ogunbowale", "pos": 1, "team": 12, "teamName": "HOU", "adp": 216.0, "bye": 8, "mu": 6.342823028564453, "src": "m"}, {"name": "Dareke Young", "pos": 2, "team": 27, "teamName": "SEA", "adp": 216.0, "bye": 11, "mu": 5.021780967712402, "src": "m"}, {"name": "Darius Cooper", "pos": 2, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 5.021780967712402, "src": "m"}, {"name": "Darren Waller", "pos": 3, "team": 19, "teamName": "MIA", "adp": 216.0, "bye": 6, "mu": 4.383775234222412, "src": "m"}, {"name": "David Moore", "pos": 2, "team": 4, "teamName": "CAR", "adp": 216.0, "bye": 5, "mu": 5.021780967712402, "src": "m"}, {"name": "Davis Allen", "pos": 3, "team": 16, "teamName": "LA", "adp": 216.0, "bye": 11, "mu": 4.383775234222412, "src": "m"}, {"name": "Davis Mills", "pos": 0, "team": 12, "teamName": "HOU", "adp": 216.0, "bye": 8, "mu": 12.915301322937012, "src": "m"}, {"name": "DeAndre Hopkins", "pos": 2, "team": 2, "teamName": "BAL", "adp": 216.0, "bye": 13, "mu": 5.021780967712402, "src": "m"}, {"name": "DeMario Douglas", "pos": 2, "team": 21, "teamName": "NE", "adp": 216.0, "bye": 11, "mu": 5.021780967712402, "src": "m"}, {"name": "DeeJay Dallas", "pos": 1, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 6.342823028564453, "src": "m"}, {"name": "Deion Burks", "pos": 2, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 5.021780967712402, "src": "m"}, {"name": "Demarcus Robinson", "pos": 2, "team": 28, "teamName": "SF", "adp": 216.0, "bye": 8, "mu": 5.021780967712402, "src": "m"}, {"name": "Deneric Prince", "pos": 1, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 6.342823028564453, "src": "m"}, {"name": "Dennis Houston", "pos": 2, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 5.021780967712402, "src": "m"}, {"name": "Deontay Burnett", "pos": 2, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 5.021780967712402, "src": "m"}, {"name": "Derek Carr", "pos": 0, "team": 22, "teamName": "NO", "adp": 216.0, "bye": 8, "mu": 12.915301322937012, "src": "m"}, {"name": "Derius Davis", "pos": 2, "team": 17, "teamName": "LAC", "adp": 216.0, "bye": 7, "mu": 5.021780967712402, "src": "m"}, {"name": "Devin Culp", "pos": 3, "team": 29, "teamName": "TB", "adp": 216.0, "bye": 10, "mu": 4.383775234222412, "src": "m"}, {"name": "Devin Duvernay", "pos": 2, "team": 5, "teamName": "CHI", "adp": 216.0, "bye": 10, "mu": 5.021780967712402, "src": "m"}, {"name": "Devin Neal", "pos": 1, "team": 22, "teamName": "NO", "adp": 216.0, "bye": 8, "mu": 6.342823028564453, "src": "m"}, {"name": "Devin Singletary", "pos": 1, "team": 23, "teamName": "NYG", "adp": 216.0, "bye": 8, "mu": 6.342823028564453, "src": "m"}, {"name": "Diego Pavia", "pos": 0, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 12.915301322937012, "src": "m"}, {"name": "Dillon Bell", "pos": 2, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 5.021780967712402, "src": "m"}, {"name": "Dillon Gabriel", "pos": 0, "team": 7, "teamName": "CLE", "adp": 216.0, "bye": 11, "mu": 12.915301322937012, "src": "m"}, {"name": "Dont'e Thornton", "pos": 2, "team": 18, "teamName": "LV", "adp": 216.0, "bye": 13, "mu": 5.021780967712402, "src": "m"}, {"name": "Dontae Fleming", "pos": 2, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 5.021780967712402, "src": "m"}, {"name": "Drew Allar", "pos": 0, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 12.915301322937012, "src": "m"}, {"name": "Drew Lock", "pos": 0, "team": 27, "teamName": "SEA", "adp": 216.0, "bye": 11, "mu": 12.915301322937012, "src": "m"}, {"name": "Drew Ogletree", "pos": 3, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 4.383775234222412, "src": "m"}, {"name": "Drew Sample", "pos": 3, "team": 6, "teamName": "CIN", "adp": 216.0, "bye": 6, "mu": 4.383775234222412, "src": "m"}, {"name": "Durham Smythe", "pos": 3, "team": 5, "teamName": "CHI", "adp": 216.0, "bye": 10, "mu": 4.383775234222412, "src": "m"}, {"name": "Dyami Brown", "pos": 2, "team": 14, "teamName": "JAX", "adp": 216.0, "bye": 7, "mu": 5.021780967712402, "src": "m"}, {"name": "Dylan Laube", "pos": 1, "team": 18, "teamName": "LV", "adp": 216.0, "bye": 13, "mu": 6.342823028564453, "src": "m"}, {"name": "Efton Chism", "pos": 2, "team": 21, "teamName": "NE", "adp": 216.0, "bye": 11, "mu": 5.021780967712402, "src": "m"}, {"name": "Elijah Higgins", "pos": 3, "team": 0, "teamName": "ARI", "adp": 216.0, "bye": 14, "mu": 4.383775234222412, "src": "m"}, {"name": "Elijah Mitchell", "pos": 1, "team": 21, "teamName": "NE", "adp": 216.0, "bye": 11, "mu": 6.342823028564453, "src": "m"}, {"name": "Elijah Moore", "pos": 2, "team": 9, "teamName": "DEN", "adp": 216.0, "bye": 10, "mu": 5.021780967712402, "src": "m"}, {"name": "Emory Jones", "pos": 0, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 12.915301322937012, "src": "m"}, {"name": "Equanimeous St. Brown", "pos": 2, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 5.021780967712402, "src": "m"}, {"name": "Eric Gray", "pos": 1, "team": 23, "teamName": "NYG", "adp": 216.0, "bye": 8, "mu": 6.342823028564453, "src": "m"}, {"name": "Eric Saubert", "pos": 3, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 4.383775234222412, "src": "m"}, {"name": "Foster Moreau", "pos": 3, "team": 22, "teamName": "NO", "adp": 216.0, "bye": 8, "mu": 4.383775234222412, "src": "m"}, {"name": "Frank Darby", "pos": 2, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 5.021780967712402, "src": "m"}, {"name": "Frank Gore", "pos": 1, "team": 3, "teamName": "BUF", "adp": 216.0, "bye": 7, "mu": 6.342823028564453, "src": "m"}, {"name": "Gardner Minshew II", "pos": 0, "team": 15, "teamName": "KC", "adp": 216.0, "bye": 5, "mu": 12.915301322937012, "src": "m"}, {"name": "Gary Brightwell", "pos": 1, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 6.342823028564453, "src": "m"}, {"name": "Grant Calcaterra", "pos": 3, "team": 25, "teamName": "PHI", "adp": 216.0, "bye": 10, "mu": 4.383775234222412, "src": "m"}, {"name": "Greg Dortch", "pos": 2, "team": 0, "teamName": "ARI", "adp": 216.0, "bye": 14, "mu": 5.021780967712402, "src": "m"}, {"name": "Gunner Olszewski", "pos": 2, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 5.021780967712402, "src": "m"}, {"name": "Hakeem Butler", "pos": 2, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 5.021780967712402, "src": "m"}, {"name": "Harrison Bryant", "pos": 3, "team": 12, "teamName": "HOU", "adp": 216.0, "bye": 8, "mu": 4.383775234222412, "src": "m"}, {"name": "Hendon Hooker", "pos": 0, "team": 24, "teamName": "NYJ", "adp": 216.0, "bye": 13, "mu": 12.915301322937012, "src": "m"}, {"name": "Hunter Luepke", "pos": 1, "team": 8, "teamName": "DAL", "adp": 216.0, "bye": 14, "mu": 6.342823028564453, "src": "m"}, {"name": "Ian Thomas", "pos": 3, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 4.383775234222412, "src": "m"}, {"name": "Isaac Guerendo", "pos": 1, "team": 28, "teamName": "SF", "adp": 216.0, "bye": 8, "mu": 6.342823028564453, "src": "m"}, {"name": "Isaiah Hodgins", "pos": 2, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 5.021780967712402, "src": "m"}, {"name": "Isaiah Neyor", "pos": 2, "team": 11, "teamName": "GB", "adp": 216.0, "bye": 11, "mu": 5.021780967712402, "src": "m"}, {"name": "Isaiah Williams", "pos": 2, "team": 24, "teamName": "NYJ", "adp": 216.0, "bye": 13, "mu": 5.021780967712402, "src": "m"}, {"name": "Israel Abanikanda", "pos": 1, "team": 8, "teamName": "DAL", "adp": 216.0, "bye": 14, "mu": 6.342823028564453, "src": "m"}, {"name": "J.Michael Sturdivant", "pos": 2, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 5.021780967712402, "src": "m"}, {"name": "J.P. Holtz", "pos": 3, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 4.383775234222412, "src": "m"}, {"name": "JP Richardson", "pos": 2, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 5.021780967712402, "src": "m"}, {"name": "Ja'Lynn Polk", "pos": 2, "team": 22, "teamName": "NO", "adp": 216.0, "bye": 8, "mu": 5.021780967712402, "src": "m"}, {"name": "Ja'Quinden Jackson", "pos": 1, "team": 14, "teamName": "JAX", "adp": 216.0, "bye": 7, "mu": 6.342823028564453, "src": "m"}, {"name": "JaMycal Hasty", "pos": 1, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 6.342823028564453, "src": "m"}, {"name": "Jack Endries", "pos": 3, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 4.383775234222412, "src": "m"}, {"name": "Jack Stoll", "pos": 3, "team": 22, "teamName": "NO", "adp": 216.0, "bye": 8, "mu": 4.383775234222412, "src": "m"}, {"name": "Jackson Hawes", "pos": 3, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 4.383775234222412, "src": "m"}, {"name": "Jacob Cowing", "pos": 2, "team": 28, "teamName": "SF", "adp": 216.0, "bye": 8, "mu": 5.021780967712402, "src": "m"}, {"name": "Jacob Saylors", "pos": 1, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 6.342823028564453, "src": "m"}, {"name": "Jake Bobo", "pos": 2, "team": 27, "teamName": "SEA", "adp": 216.0, "bye": 11, "mu": 5.021780967712402, "src": "m"}, {"name": "Jake Briningstool", "pos": 3, "team": 15, "teamName": "KC", "adp": 216.0, "bye": 5, "mu": 4.383775234222412, "src": "m"}, {"name": "Jake Browning", "pos": 0, "team": 6, "teamName": "CIN", "adp": 216.0, "bye": 6, "mu": 12.915301322937012, "src": "m"}, {"name": "Jalen Brooks", "pos": 2, "team": 0, "teamName": "ARI", "adp": 216.0, "bye": 14, "mu": 5.021780967712402, "src": "m"}, {"name": "Jalen Milroe", "pos": 0, "team": 27, "teamName": "SEA", "adp": 216.0, "bye": 11, "mu": 12.915301322937012, "src": "m"}, {"name": "Jalen Reagor", "pos": 2, "team": 17, "teamName": "LAC", "adp": 216.0, "bye": 7, "mu": 5.021780967712402, "src": "m"}, {"name": "Jalen Royals", "pos": 2, "team": 15, "teamName": "KC", "adp": 216.0, "bye": 5, "mu": 5.021780967712402, "src": "m"}, {"name": "Jalen White", "pos": 1, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 6.342823028564453, "src": "m"}, {"name": "Jalin Hyatt", "pos": 2, "team": 23, "teamName": "NYG", "adp": 216.0, "bye": 8, "mu": 5.021780967712402, "src": "m"}, {"name": "Jam Miller", "pos": 1, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 6.342823028564453, "src": "m"}, {"name": "Jameis Winston", "pos": 0, "team": 23, "teamName": "NYG", "adp": 216.0, "bye": 8, "mu": 14.300546646118164, "src": "u"}, {"name": "James Mitchell", "pos": 3, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 4.383775234222412, "src": "m"}, {"name": "James Washington", "pos": 2, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 5.021780967712402, "src": "m"}, {"name": "Jamison Crowder", "pos": 2, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 5.021780967712402, "src": "m"}, {"name": "Jaray Jenkins", "pos": 2, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 5.021780967712402, "src": "m"}, {"name": "Jared Wiley", "pos": 3, "team": 15, "teamName": "KC", "adp": 216.0, "bye": 5, "mu": 4.383775234222412, "src": "m"}, {"name": "Jarquez Hunter", "pos": 1, "team": 16, "teamName": "LA", "adp": 216.0, "bye": 11, "mu": 6.342823028564453, "src": "m"}, {"name": "Jarrett Stidham", "pos": 0, "team": 9, "teamName": "DEN", "adp": 216.0, "bye": 10, "mu": 12.915301322937012, "src": "m"}, {"name": "Jawhar Jordan", "pos": 1, "team": 12, "teamName": "HOU", "adp": 216.0, "bye": 8, "mu": 6.342823028564453, "src": "m"}, {"name": "Jaydn Ott", "pos": 1, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 6.342823028564453, "src": "m"}, {"name": "Jaylin Lane", "pos": 2, "team": 32, "teamName": "WAS", "adp": 216.0, "bye": 7, "mu": 5.021780967712402, "src": "m"}, {"name": "Jeremy McNichols", "pos": 1, "team": 32, "teamName": "WAS", "adp": 216.0, "bye": 7, "mu": 6.342823028564453, "src": "m"}, {"name": "Jeremy Ruckert", "pos": 3, "team": 24, "teamName": "NYJ", "adp": 216.0, "bye": 13, "mu": 4.383775234222412, "src": "m"}, {"name": "Jerjuan Newton", "pos": 2, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 5.021780967712402, "src": "m"}, {"name": "Jermar Jefferson", "pos": 1, "team": 0, "teamName": "ARI", "adp": 216.0, "bye": 14, "mu": 6.342823028564453, "src": "m"}, {"name": "Jerome Ford", "pos": 1, "team": 7, "teamName": "CLE", "adp": 216.0, "bye": 11, "mu": 6.342823028564453, "src": "m"}, {"name": "Jimmy Horn", "pos": 2, "team": 4, "teamName": "CAR", "adp": 216.0, "bye": 5, "mu": 5.021780967712402, "src": "m"}, {"name": "Jody Fortson", "pos": 3, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 4.383775234222412, "src": "m"}, {"name": "Joe Flacco", "pos": 0, "team": 6, "teamName": "CIN", "adp": 216.0, "bye": 6, "mu": 13.515048027038574, "src": "u"}, {"name": "Joe Milton", "pos": 0, "team": 8, "teamName": "DAL", "adp": 216.0, "bye": 14, "mu": 12.915301322937012, "src": "m"}, {"name": "Joe Mixon", "pos": 1, "team": 12, "teamName": "HOU", "adp": 216.0, "bye": 8, "mu": 6.342823028564453, "src": "m"}, {"name": "Joe Royer", "pos": 3, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 4.383775234222412, "src": "m"}, {"name": "Joel Wilson", "pos": 3, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 4.383775234222412, "src": "m"}, {"name": "John Bates", "pos": 3, "team": 32, "teamName": "WAS", "adp": 216.0, "bye": 7, "mu": 4.383775234222412, "src": "m"}, {"name": "John Metchie III", "pos": 2, "team": 24, "teamName": "NYJ", "adp": 216.0, "bye": 13, "mu": 5.021780967712402, "src": "m"}, {"name": "John Michael Gyllenborg", "pos": 3, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 4.383775234222412, "src": "m"}, {"name": "John Ross", "pos": 2, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 5.021780967712402, "src": "m"}, {"name": "Johnny Wilson", "pos": 2, "team": 25, "teamName": "PHI", "adp": 216.0, "bye": 10, "mu": 5.021780967712402, "src": "m"}, {"name": "Jonathan Ward", "pos": 1, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 6.342823028564453, "src": "m"}, {"name": "Jonnu Smith", "pos": 3, "team": 26, "teamName": "PIT", "adp": 216.0, "bye": 9, "mu": 4.383775234222412, "src": "m"}, {"name": "Jordan Akins", "pos": 3, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 4.383775234222412, "src": "m"}, {"name": "Jordan Mims", "pos": 1, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 6.342823028564453, "src": "m"}, {"name": "Jordan Moore", "pos": 2, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 5.021780967712402, "src": "m"}, {"name": "Jordan Watkins", "pos": 2, "team": 28, "teamName": "SF", "adp": 216.0, "bye": 8, "mu": 5.021780967712402, "src": "m"}, {"name": "Jordan Whittington", "pos": 2, "team": 16, "teamName": "LA", "adp": 216.0, "bye": 11, "mu": 5.021780967712402, "src": "m"}, {"name": "Josh Cameron", "pos": 2, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 5.021780967712402, "src": "m"}, {"name": "Josh Cuevas", "pos": 3, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 4.383775234222412, "src": "m"}, {"name": "Josh Oliver", "pos": 3, "team": 20, "teamName": "MIN", "adp": 216.0, "bye": 6, "mu": 4.383775234222412, "src": "m"}, {"name": "Josh Pederson", "pos": 3, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 4.383775234222412, "src": "m"}, {"name": "Josh Whyle", "pos": 3, "team": 11, "teamName": "GB", "adp": 216.0, "bye": 11, "mu": 4.383775234222412, "src": "m"}, {"name": "Joshua Palmer", "pos": 2, "team": 3, "teamName": "BUF", "adp": 216.0, "bye": 7, "mu": 5.021780967712402, "src": "m"}, {"name": "JuJu Smith-Schuster", "pos": 2, "team": 15, "teamName": "KC", "adp": 216.0, "bye": 5, "mu": 5.021780967712402, "src": "m"}, {"name": "Julian Hill", "pos": 3, "team": 19, "teamName": "MIA", "adp": 216.0, "bye": 6, "mu": 4.383775234222412, "src": "m"}, {"name": "Julius Chestnut", "pos": 1, "team": 30, "teamName": "TEN", "adp": 216.0, "bye": 9, "mu": 6.342823028564453, "src": "m"}, {"name": "K.J. Osborn", "pos": 2, "team": 1, "teamName": "ATL", "adp": 216.0, "bye": 11, "mu": 5.021780967712402, "src": "m"}, {"name": "Kaden Wetjen", "pos": 2, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 5.021780967712402, "src": "m"}, {"name": "Kaleb Johnson", "pos": 1, "team": 26, "teamName": "PIT", "adp": 216.0, "bye": 9, "mu": 6.342823028564453, "src": "m"}, {"name": "Kalel Mullings", "pos": 1, "team": 30, "teamName": "TEN", "adp": 216.0, "bye": 9, "mu": 6.342823028564453, "src": "m"}, {"name": "Kalen Ballage", "pos": 1, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 6.342823028564453, "src": "m"}, {"name": "Kareem Hunt", "pos": 1, "team": 15, "teamName": "KC", "adp": 216.0, "bye": 5, "mu": 6.342823028564453, "src": "m"}, {"name": "Kazmeir Allen", "pos": 1, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 6.342823028564453, "src": "m"}, {"name": "KeAndre Lambert-Smith", "pos": 2, "team": 17, "teamName": "LAC", "adp": 216.0, "bye": 7, "mu": 5.021780967712402, "src": "m"}, {"name": "Keelan Doss", "pos": 2, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 5.021780967712402, "src": "m"}, {"name": "Kendall Milton", "pos": 1, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 6.342823028564453, "src": "m"}, {"name": "Kendre Miller", "pos": 1, "team": 22, "teamName": "NO", "adp": 216.0, "bye": 8, "mu": 6.342823028564453, "src": "m"}, {"name": "Kenny McIntosh", "pos": 1, "team": 27, "teamName": "SEA", "adp": 216.0, "bye": 11, "mu": 6.342823028564453, "src": "m"}, {"name": "Kenny Pickett", "pos": 0, "team": 18, "teamName": "LV", "adp": 216.0, "bye": 13, "mu": 12.915301322937012, "src": "m"}, {"name": "Kevin Austin", "pos": 2, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 5.021780967712402, "src": "m"}, {"name": "Khalil Herbert", "pos": 1, "team": 24, "teamName": "NYJ", "adp": 216.0, "bye": 13, "mu": 6.342823028564453, "src": "m"}, {"name": "Kirk Merritt", "pos": 2, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 5.021780967712402, "src": "m"}, {"name": "Konata Mumpfield", "pos": 2, "team": 16, "teamName": "LA", "adp": 216.0, "bye": 11, "mu": 5.021780967712402, "src": "m"}, {"name": "Kwamie Lassiter", "pos": 2, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 5.021780967712402, "src": "m"}, {"name": "Kyle Allen", "pos": 0, "team": 10, "teamName": "DET", "adp": 216.0, "bye": 6, "mu": 12.915301322937012, "src": "m"}, {"name": "Kylen Granson", "pos": 3, "team": 25, "teamName": "PHI", "adp": 216.0, "bye": 10, "mu": 4.383775234222412, "src": "m"}, {"name": "LaJohntay Wester", "pos": 2, "team": 2, "teamName": "BAL", "adp": 216.0, "bye": 13, "mu": 5.021780967712402, "src": "m"}, {"name": "Lan Larison", "pos": 1, "team": 21, "teamName": "NE", "adp": 216.0, "bye": 11, "mu": 6.342823028564453, "src": "m"}, {"name": "Laquon Treadwell", "pos": 2, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 5.021780967712402, "src": "m"}, {"name": "Le'Veon Moss", "pos": 1, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 6.342823028564453, "src": "m"}, {"name": "Leonard Taylor", "pos": 3, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 4.383775234222412, "src": "m"}, {"name": "Lewis Bond", "pos": 2, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 5.021780967712402, "src": "m"}, {"name": "Lil'Jordan Humphrey", "pos": 2, "team": 9, "teamName": "DEN", "adp": 216.0, "bye": 10, "mu": 5.021780967712402, "src": "m"}, {"name": "Logan Woodside", "pos": 0, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 12.915301322937012, "src": "m"}, {"name": "Lucas Krull", "pos": 3, "team": 9, "teamName": "DEN", "adp": 216.0, "bye": 10, "mu": 4.383775234222412, "src": "m"}, {"name": "Luke Farrell", "pos": 3, "team": 28, "teamName": "SF", "adp": 216.0, "bye": 8, "mu": 4.383775234222412, "src": "m"}, {"name": "Luke McCaffrey", "pos": 2, "team": 32, "teamName": "WAS", "adp": 216.0, "bye": 7, "mu": 5.021780967712402, "src": "m"}, {"name": "Luke Musgrave", "pos": 3, "team": 11, "teamName": "GB", "adp": 216.0, "bye": 11, "mu": 4.383775234222412, "src": "m"}, {"name": "Luke Schoonmaker", "pos": 3, "team": 8, "teamName": "DAL", "adp": 216.0, "bye": 14, "mu": 4.383775234222412, "src": "m"}, {"name": "Luke Stocker", "pos": 3, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 4.383775234222412, "src": "m"}, {"name": "Mack Hollins", "pos": 2, "team": 21, "teamName": "NE", "adp": 216.0, "bye": 11, "mu": 5.021780967712402, "src": "m"}, {"name": "Malachi Corley", "pos": 2, "team": 7, "teamName": "CLE", "adp": 216.0, "bye": 11, "mu": 5.021780967712402, "src": "m"}, {"name": "Malik Cunningham", "pos": 2, "team": 10, "teamName": "DET", "adp": 216.0, "bye": 6, "mu": 5.021780967712402, "src": "m"}, {"name": "Malik Heath", "pos": 2, "team": 1, "teamName": "ATL", "adp": 216.0, "bye": 11, "mu": 5.021780967712402, "src": "m"}, {"name": "Malik Taylor", "pos": 2, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 5.021780967712402, "src": "m"}, {"name": "Marcus Mariota", "pos": 0, "team": 32, "teamName": "WAS", "adp": 216.0, "bye": 7, "mu": 12.915301322937012, "src": "m"}, {"name": "Mark Redman", "pos": 3, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 4.383775234222412, "src": "m"}, {"name": "Marlin Klein", "pos": 3, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 4.383775234222412, "src": "m"}, {"name": "Marlon Mack", "pos": 1, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 6.342823028564453, "src": "m"}, {"name": "Marquez Valdes-Scantling", "pos": 2, "team": 26, "teamName": "PIT", "adp": 216.0, "bye": 9, "mu": 5.021780967712402, "src": "m"}, {"name": "Mason Rudolph", "pos": 0, "team": 26, "teamName": "PIT", "adp": 216.0, "bye": 9, "mu": 12.915301322937012, "src": "m"}, {"name": "Mason Tipton", "pos": 2, "team": 22, "teamName": "NO", "adp": 216.0, "bye": 8, "mu": 5.021780967712402, "src": "m"}, {"name": "Maurice Alexander", "pos": 2, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 5.021780967712402, "src": "m"}, {"name": "Max Duggan", "pos": 0, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 12.915301322937012, "src": "m"}, {"name": "Max Klare", "pos": 3, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 4.383775234222412, "src": "m"}, {"name": "Michael Carter", "pos": 1, "team": 0, "teamName": "ARI", "adp": 216.0, "bye": 14, "mu": 6.342823028564453, "src": "m"}, {"name": "Michael Pratt", "pos": 0, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 12.915301322937012, "src": "m"}, {"name": "Michael Strachan", "pos": 2, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 5.021780967712402, "src": "m"}, {"name": "Michael Trigg", "pos": 3, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 4.383775234222412, "src": "m"}, {"name": "Miles Kitselman", "pos": 3, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 4.383775234222412, "src": "m"}, {"name": "Miller Forristall", "pos": 3, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 4.383775234222412, "src": "m"}, {"name": "Mitch Tinsley", "pos": 2, "team": 6, "teamName": "CIN", "adp": 216.0, "bye": 6, "mu": 5.021780967712402, "src": "m"}, {"name": "Mitchell Evans", "pos": 3, "team": 4, "teamName": "CAR", "adp": 216.0, "bye": 5, "mu": 4.383775234222412, "src": "m"}, {"name": "Mitchell Trubisky", "pos": 0, "team": 3, "teamName": "BUF", "adp": 216.0, "bye": 7, "mu": 12.915301322937012, "src": "m"}, {"name": "Mo Alie-Cox", "pos": 3, "team": 13, "teamName": "IND", "adp": 216.0, "bye": 13, "mu": 4.383775234222412, "src": "m"}, {"name": "Montrell Johnson", "pos": 1, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 6.342823028564453, "src": "m"}, {"name": "MyCole Pruitt", "pos": 3, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 4.383775234222412, "src": "m"}, {"name": "Nate Adkins", "pos": 3, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 4.383775234222412, "src": "m"}, {"name": "Nate Boerkircher", "pos": 3, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 4.383775234222412, "src": "m"}, {"name": "Nathan Carter", "pos": 1, "team": 1, "teamName": "ATL", "adp": 216.0, "bye": 11, "mu": 6.342823028564453, "src": "m"}, {"name": "Neal Johnson", "pos": 3, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 4.383775234222412, "src": "m"}, {"name": "Nick Boyle", "pos": 3, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 4.383775234222412, "src": "m"}, {"name": "Nick Chubb", "pos": 1, "team": 12, "teamName": "HOU", "adp": 216.0, "bye": 8, "mu": 6.342823028564453, "src": "m"}, {"name": "Nick Mullens", "pos": 0, "team": 14, "teamName": "JAX", "adp": 216.0, "bye": 7, "mu": 12.915301322937012, "src": "m"}, {"name": "Nick Nash", "pos": 2, "team": 1, "teamName": "ATL", "adp": 216.0, "bye": 11, "mu": 5.021780967712402, "src": "m"}, {"name": "Nick Westbrook-Ikhine", "pos": 2, "team": 19, "teamName": "MIA", "adp": 216.0, "bye": 6, "mu": 5.021780967712402, "src": "m"}, {"name": "Nikko Remigio", "pos": 2, "team": 15, "teamName": "KC", "adp": 216.0, "bye": 5, "mu": 5.021780967712402, "src": "m"}, {"name": "Noah Brown", "pos": 2, "team": 32, "teamName": "WAS", "adp": 216.0, "bye": 7, "mu": 5.021780967712402, "src": "m"}, {"name": "Noah Fant", "pos": 3, "team": 6, "teamName": "CIN", "adp": 216.0, "bye": 6, "mu": 4.383775234222412, "src": "m"}, {"name": "Noah Gray", "pos": 3, "team": 15, "teamName": "KC", "adp": 216.0, "bye": 5, "mu": 4.383775234222412, "src": "m"}, {"name": "Noah Togiai", "pos": 3, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 4.383775234222412, "src": "m"}, {"name": "Noah Whittington", "pos": 1, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 6.342823028564453, "src": "m"}, {"name": "Odell Beckham Jr.", "pos": 2, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 5.021780967712402, "src": "m"}, {"name": "Olamide Zaccheaus", "pos": 2, "team": 5, "teamName": "CHI", "adp": 216.0, "bye": 10, "mu": 5.021780967712402, "src": "m"}, {"name": "Payne Durham", "pos": 3, "team": 29, "teamName": "TB", "adp": 216.0, "bye": 10, "mu": 4.383775234222412, "src": "m"}, {"name": "Phil Mafah", "pos": 1, "team": 8, "teamName": "DAL", "adp": 216.0, "bye": 14, "mu": 6.342823028564453, "src": "m"}, {"name": "Pierre Strong Jr.", "pos": 1, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 6.342823028564453, "src": "m"}, {"name": "Quinn Ewers", "pos": 0, "team": 19, "teamName": "MIA", "adp": 216.0, "bye": 6, "mu": 12.915301322937012, "src": "m"}, {"name": "Raheem Blackshear", "pos": 1, "team": 24, "teamName": "NYJ", "adp": 216.0, "bye": 13, "mu": 6.342823028564453, "src": "m"}, {"name": "Raheim Sanders", "pos": 1, "team": 7, "teamName": "CLE", "adp": 216.0, "bye": 11, "mu": 6.342823028564453, "src": "m"}, {"name": "Rakim Jarrett", "pos": 2, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 5.021780967712402, "src": "m"}, {"name": "Rasheen Ali", "pos": 1, "team": 2, "teamName": "BAL", "adp": 216.0, "bye": 13, "mu": 6.342823028564453, "src": "m"}, {"name": "Reggie Virgil", "pos": 2, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 5.021780967712402, "src": "m"}, {"name": "Ricky White", "pos": 2, "team": 27, "teamName": "SEA", "adp": 216.0, "bye": 11, "mu": 5.021780967712402, "src": "m"}, {"name": "Riley Leonard", "pos": 0, "team": 13, "teamName": "IND", "adp": 216.0, "bye": 13, "mu": 12.915301322937012, "src": "m"}, {"name": "Robert Lewis", "pos": 2, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 5.021780967712402, "src": "m"}, {"name": "Robert Tonyan", "pos": 3, "team": 15, "teamName": "KC", "adp": 216.0, "bye": 5, "mu": 4.383775234222412, "src": "m"}, {"name": "Roman Hemby", "pos": 1, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 6.342823028564453, "src": "m"}, {"name": "Roman Wilson", "pos": 2, "team": 26, "teamName": "PIT", "adp": 216.0, "bye": 9, "mu": 5.021780967712402, "src": "m"}, {"name": "Ronald Jones", "pos": 1, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 6.342823028564453, "src": "m"}, {"name": "Ronnie Bell", "pos": 2, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 5.021780967712402, "src": "m"}, {"name": "Roschon Johnson", "pos": 1, "team": 5, "teamName": "CHI", "adp": 216.0, "bye": 10, "mu": 6.342823028564453, "src": "m"}, {"name": "Russell Wilson", "pos": 0, "team": 23, "teamName": "NYG", "adp": 216.0, "bye": 8, "mu": 12.915301322937012, "src": "m"}, {"name": "Salvon Ahmed", "pos": 1, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 6.342823028564453, "src": "m"}, {"name": "Sam Roush", "pos": 3, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 4.383775234222412, "src": "m"}, {"name": "Scotty Miller", "pos": 2, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 5.021780967712402, "src": "m"}, {"name": "Scotty Washington", "pos": 3, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 4.383775234222412, "src": "m"}, {"name": "Seth Henigan", "pos": 0, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 12.915301322937012, "src": "m"}, {"name": "Seth McGowan", "pos": 1, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 6.342823028564453, "src": "m"}, {"name": "Seydou Traore", "pos": 3, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 4.383775234222412, "src": "m"}, {"name": "Sione Vaki", "pos": 1, "team": 10, "teamName": "DET", "adp": 216.0, "bye": 6, "mu": 6.342823028564453, "src": "m"}, {"name": "Skyy Moore", "pos": 2, "team": 28, "teamName": "SF", "adp": 216.0, "bye": 8, "mu": 5.021780967712402, "src": "m"}, {"name": "Spencer Rattler", "pos": 0, "team": 22, "teamName": "NO", "adp": 216.0, "bye": 8, "mu": 12.915301322937012, "src": "m"}, {"name": "Stetson Bennett", "pos": 0, "team": 16, "teamName": "LA", "adp": 216.0, "bye": 11, "mu": 12.915301322937012, "src": "m"}, {"name": "Stone Smartt", "pos": 3, "team": 24, "teamName": "NYJ", "adp": 216.0, "bye": 13, "mu": 4.383775234222412, "src": "m"}, {"name": "Tai Felton", "pos": 2, "team": 20, "teamName": "MIN", "adp": 216.0, "bye": 6, "mu": 5.021780967712402, "src": "m"}, {"name": "Tanner Conner", "pos": 3, "team": 23, "teamName": "NYG", "adp": 216.0, "bye": 8, "mu": 4.383775234222412, "src": "m"}, {"name": "Tanner Hudson", "pos": 3, "team": 6, "teamName": "CIN", "adp": 216.0, "bye": 6, "mu": 4.383775234222412, "src": "m"}, {"name": "Tanner Koziol", "pos": 3, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 4.383775234222412, "src": "m"}, {"name": "Tanner McKee", "pos": 0, "team": 25, "teamName": "PHI", "adp": 216.0, "bye": 10, "mu": 12.915301322937012, "src": "m"}, {"name": "Taylen Green", "pos": 0, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 12.915301322937012, "src": "m"}, {"name": "Taylor Heinicke", "pos": 0, "team": 17, "teamName": "LAC", "adp": 216.0, "bye": 7, "mu": 12.915301322937012, "src": "m"}, {"name": "Taysom Hill", "pos": 3, "team": 22, "teamName": "NO", "adp": 216.0, "bye": 8, "mu": 4.383775234222412, "src": "m"}, {"name": "Teddy Bridgewater", "pos": 0, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 12.915301322937012, "src": "m"}, {"name": "Terrace Marshall Jr.", "pos": 2, "team": 25, "teamName": "PHI", "adp": 216.0, "bye": 10, "mu": 5.021780967712402, "src": "m"}, {"name": "Theo Riddick", "pos": 1, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 6.342823028564453, "src": "m"}, {"name": "Theo Wease", "pos": 2, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 5.021780967712402, "src": "m"}, {"name": "Tim Jones", "pos": 2, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 5.021780967712402, "src": "m"}, {"name": "Tim Patrick", "pos": 2, "team": 14, "teamName": "JAX", "adp": 216.0, "bye": 7, "mu": 5.021780967712402, "src": "m"}, {"name": "Tommy DeVito", "pos": 0, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 12.915301322937012, "src": "m"}, {"name": "Tommy Mellott", "pos": 2, "team": 22, "teamName": "NO", "adp": 216.0, "bye": 8, "mu": 5.021780967712402, "src": "m"}, {"name": "Tommy Tremble", "pos": 3, "team": 4, "teamName": "CAR", "adp": 216.0, "bye": 5, "mu": 4.383775234222412, "src": "m"}, {"name": "Travis Vokolek", "pos": 3, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 4.383775234222412, "src": "m"}, {"name": "Trayveon Williams", "pos": 1, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 6.342823028564453, "src": "m"}, {"name": "Tre Stewart", "pos": 1, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 6.342823028564453, "src": "m"}, {"name": "Trebor Pena", "pos": 2, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 5.021780967712402, "src": "m"}, {"name": "Trevor Etienne", "pos": 1, "team": 4, "teamName": "CAR", "adp": 216.0, "bye": 5, "mu": 6.342823028564453, "src": "m"}, {"name": "Trey Benson", "pos": 1, "team": 0, "teamName": "ARI", "adp": 216.0, "bye": 14, "mu": 6.342823028564453, "src": "m"}, {"name": "Trey Lance", "pos": 0, "team": 17, "teamName": "LAC", "adp": 216.0, "bye": 7, "mu": 12.915301322937012, "src": "m"}, {"name": "Trey Palmer", "pos": 2, "team": 22, "teamName": "NO", "adp": 216.0, "bye": 8, "mu": 5.021780967712402, "src": "m"}, {"name": "Trey Sermon", "pos": 1, "team": 26, "teamName": "PIT", "adp": 216.0, "bye": 9, "mu": 6.342823028564453, "src": "m"}, {"name": "Trinidad Chambliss", "pos": 0, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 12.915301322937012, "src": "m"}, {"name": "Ty Chandler", "pos": 1, "team": 20, "teamName": "MIN", "adp": 216.0, "bye": 6, "mu": 6.342823028564453, "src": "m"}, {"name": "Ty Simpson", "pos": 0, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 12.915301322937012, "src": "m"}, {"name": "Tylan Wallace", "pos": 2, "team": 2, "teamName": "BAL", "adp": 216.0, "bye": 13, "mu": 5.021780967712402, "src": "m"}, {"name": "Tyler Conklin", "pos": 3, "team": 17, "teamName": "LAC", "adp": 216.0, "bye": 7, "mu": 4.383775234222412, "src": "m"}, {"name": "Tyler Goodson", "pos": 1, "team": 13, "teamName": "IND", "adp": 216.0, "bye": 13, "mu": 6.342823028564453, "src": "m"}, {"name": "Tyler Higbee", "pos": 3, "team": 16, "teamName": "LA", "adp": 216.0, "bye": 11, "mu": 4.383775234222412, "src": "m"}, {"name": "Tyler Huntley", "pos": 0, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 12.915301322937012, "src": "m"}, {"name": "Tyler Johnson", "pos": 2, "team": 24, "teamName": "NYJ", "adp": 216.0, "bye": 13, "mu": 5.021780967712402, "src": "m"}, {"name": "Tyler Scott", "pos": 2, "team": 16, "teamName": "LA", "adp": 216.0, "bye": 11, "mu": 5.021780967712402, "src": "m"}, {"name": "Tyree Jackson", "pos": 3, "team": 32, "teamName": "WAS", "adp": 216.0, "bye": 7, "mu": 4.383775234222412, "src": "m"}, {"name": "Tyrell Shavers", "pos": 2, "team": 3, "teamName": "BUF", "adp": 216.0, "bye": 7, "mu": 5.021780967712402, "src": "m"}, {"name": "Tyrod Taylor", "pos": 0, "team": 24, "teamName": "NYJ", "adp": 216.0, "bye": 13, "mu": 12.915301322937012, "src": "m"}, {"name": "Tyson Bagent", "pos": 0, "team": 5, "teamName": "CHI", "adp": 216.0, "bye": 10, "mu": 12.915301322937012, "src": "m"}, {"name": "Van Jefferson", "pos": 2, "team": 30, "teamName": "TEN", "adp": 216.0, "bye": 9, "mu": 5.021780967712402, "src": "m"}, {"name": "Wayne Gallman", "pos": 1, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 6.342823028564453, "src": "m"}, {"name": "Will Howard", "pos": 0, "team": 26, "teamName": "PIT", "adp": 216.0, "bye": 9, "mu": 12.915301322937012, "src": "m"}, {"name": "Will Kacmarek", "pos": 3, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 4.383775234222412, "src": "m"}, {"name": "Will Levis", "pos": 0, "team": 30, "teamName": "TEN", "adp": 216.0, "bye": 9, "mu": 12.915301322937012, "src": "m"}, {"name": "Will Sheppard", "pos": 2, "team": 11, "teamName": "GB", "adp": 216.0, "bye": 11, "mu": 5.021780967712402, "src": "m"}, {"name": "Will Shipley", "pos": 1, "team": 25, "teamName": "PHI", "adp": 216.0, "bye": 10, "mu": 6.342823028564453, "src": "m"}, {"name": "Xavier Guillory", "pos": 2, "team": 31, "teamName": "UNK", "adp": 216.0, "bye": 0, "mu": 5.021780967712402, "src": "m"}, {"name": "Xavier Hutchinson", "pos": 2, "team": 12, "teamName": "HOU", "adp": 216.0, "bye": 8, "mu": 5.021780967712402, "src": "m"}, {"name": "Xavier Restrepo", "pos": 2, "team": 30, "teamName": "TEN", "adp": 216.0, "bye": 9, "mu": 5.021780967712402, "src": "m"}, {"name": "Xavier Smith", "pos": 2, "team": 16, "teamName": "LA", "adp": 216.0, "bye": 11, "mu": 5.021780967712402, "src": "m"}, {"name": "Xavier Weaver", "pos": 2, "team": 0, "teamName": "ARI", "adp": 216.0, "bye": 14, "mu": 5.021780967712402, "src": "m"}, {"name": "Zach Davidson", "pos": 3, "team": 23, "teamName": "NYG", "adp": 216.0, "bye": 8, "mu": 4.383775234222412, "src": "m"}, {"name": "Zach Ertz", "pos": 3, "team": 32, "teamName": "WAS", "adp": 216.0, "bye": 7, "mu": 4.383775234222412, "src": "m"}, {"name": "Zach Wilson", "pos": 0, "team": 19, "teamName": "MIA", "adp": 216.0, "bye": 6, "mu": 12.915301322937012, "src": "m"}, {"name": "Zavier Scott", "pos": 1, "team": 20, "teamName": "MIN", "adp": 216.0, "bye": 6, "mu": 6.342823028564453, "src": "m"}], "positions": ["QB", "RB", "WR", "TE"], "nTeamIds": 33, "gameId": [[0, 1, 2, 3, 4, 3, 0, 5, 6, 7, 8, 9, 10, 11, 12, 2, 8, 5, 4, 1, 8, 9, 6, 11, 12, 10, 13, 11, 0, 5, 3, 2, 2, 11, 9, 0, 6, 6, 14, 13, 7, 12, 6, 10, 14, 3, 14, 9, 3, 0, 14, 4, 15, 2, 5, 15, 9, 7, 13, 14, 15, 4, 0, 5, 4, 10, 15, 2, 11, 14, 10, 13, 10, 1, 11, 4, 1, 14, 5, 6, 11, 7, 12, 7, 15, 12, 1, 2, 7, 5, 3, 12, 14, 12, 0, 3, 3, 12, 1, 11, 14, 6, 15, 1, 3, 15, 12, 2, 10, 0, 7, 7, 7, 3, 13, 7, 4, 2, 15, 7, 12, 10, 0, 9, 5, 9, 15, 9, 6, 6, 14, 4, 6, 8, 4, 10, 11, 13, 10, 4, 15, 9, 9, 13, 2, 5, 7, 0, 11, 15, 4, 3, 8, 13, 15, 12, 0, 14, 4, 6, 13, 11, 10, 10, 11, 0, 0, 9, 7, 1, 13, 3, 15, 8, 4, 10, 1, 8, 15, 13, 1, 8, 13, 2, 2, 1, 3, 13, 7, 12, 9, 1, 6, 9, 7, 11, 1, 8, 2, 10, 12, 2, 13, 5, 4, 1, 9, 10, 9, 13, 5, 3, 3, 4, 12, 4, 11, 12, 12, 11, 7, 14, 3, 6, 9, 15, 5, 3, 11, 8, 8, 1, 4, 15, 0, 8, 1, 8, 2, 2, 5, 5, 8, 11, 6, 9, 8, 6, 3, 11, 6, 7, 8, 11, 14, 15, 14, 13, 9, 4, 10, 9, 16, 16, 16, 7, 16, 14, 5, 4, 13, 11, 2, 16, 1, 12, 15, 13, 16, 16, 7, 15, 13, 16, 6, 0, 3, 16, 4, 3, 16, 12, 13, 16, 16, 11, 8, 0, 16, 7, 2, 2, 10, 3, 12, 14, 12, 10, 16, 12, 8, 8, 5, 14, 5, 16, 4, 13, 5, 0, 10, 4, 16, 11, 16, 16, 10, 16, 16, 16, 13, 9, 16, 12, 8, 9, 6, 16, 0, 16, 16, 16, 16, 16, 9, 12, 1, 7, 16, 1, 15, 16, 16, 16, 16, 16, 16, 16, 9, 16, 16, 16, 12, 16, 7, 6, 0, 9, 4, 16, 8, 14, 3, 9, 5, 4, 16, 16, 3, 16, 16, 16, 0, 11, 2, 14, 0, 6, 16, 16, 15, 8, 16, 16, 4, 16, 2, 14, 15, 8, 4, 11, 4, 12, 16, 16, 6, 16, 0, 16, 9, 12, 16, 10, 11, 16, 16, 9, 13, 6, 16, 3, 16, 7, 13, 6, 16, 16, 16, 0, 15, 16, 16, 0, 16, 3, 16, 4, 12, 2, 11, 4, 11, 12, 16, 6, 16, 6, 16, 16, 16, 16, 12, 3, 12, 9, 16, 10, 10, 13, 16, 11, 15, 14, 16, 2, 6, 9, 16, 16, 10, 13, 16, 16, 10, 16, 1, 16, 16, 16, 3, 3, 16, 16, 7, 16, 7, 9, 12, 8, 13, 1, 16, 1, 13, 16, 12, 16, 11, 16, 16, 0, 4, 8, 16, 13, 16, 3, 16, 0, 10, 5, 4, 16, 16, 16, 16, 12, 16, 12, 3, 10, 7, 6, 16, 4, 15, 0, 1, 16, 10, 16, 16, 16, 1, 1, 0, 16, 16, 16, 11, 16, 16, 16, 16, 16, 2, 14, 9, 5, 16, 16, 16, 16, 1, 16, 16, 9, 15, 1, 8, 12, 10, 2, 12, 16, 16, 16, 14, 2, 6, 16, 8, 13, 15, 16, 5, 16, 4, 5, 16, 12, 16, 1, 16, 16, 14, 6, 16, 16, 16, 16, 16, 16, 16, 0, 3, 0, 3, 13, 7, 6, 2, 16, 10, 16, 11, 0, 16, 10, 16, 16, 16, 15, 16, 0, 14, 16, 16, 16, 16, 14, 11, 11, 0, 1, 16, 7, 16, 5, 11, 5, 3, 16, 13, 3, 10, 9, 13, 14, 13, 16, 1, 16, 13, 7, 10, 16, 9, 13, 3, 11, 6, 10, 8, 7], [0, 1, 2, 3, 4, 5, 0, 6, 7, 8, 9, 0, 10, 9, 6, 2, 5, 11, 12, 1, 9, 2, 7, 4, 6, 10, 13, 4, 11, 11, 3, 2, 14, 9, 0, 11, 7, 3, 1, 13, 13, 15, 3, 7, 8, 5, 8, 2, 3, 0, 8, 12, 14, 14, 11, 15, 0, 13, 10, 8, 15, 4, 11, 6, 12, 7, 15, 2, 4, 8, 10, 10, 10, 12, 9, 12, 12, 1, 6, 7, 9, 13, 15, 13, 15, 15, 12, 14, 8, 6, 3, 6, 8, 6, 0, 5, 5, 15, 12, 4, 1, 3, 14, 1, 3, 15, 15, 14, 7, 0, 13, 8, 13, 5, 10, 8, 12, 14, 14, 8, 6, 7, 11, 2, 11, 0, 15, 0, 7, 3, 1, 4, 3, 5, 12, 10, 9, 10, 7, 4, 15, 2, 2, 13, 14, 6, 8, 0, 9, 15, 12, 5, 9, 10, 14, 15, 11, 1, 4, 7, 13, 4, 10, 7, 9, 0, 11, 2, 8, 1, 13, 5, 14, 9, 4, 7, 12, 5, 14, 10, 1, 5, 13, 14, 14, 12, 3, 10, 13, 6, 0, 12, 7, 2, 13, 4, 1, 9, 14, 7, 15, 2, 13, 11, 4, 1, 0, 10, 2, 10, 11, 3, 5, 12, 6, 4, 9, 15, 15, 9, 8, 1, 5, 3, 2, 14, 11, 5, 9, 5, 5, 12, 4, 14, 11, 9, 1, 9, 2, 2, 6, 11, 9, 4, 7, 0, 5, 3, 5, 9, 3, 13, 5, 4, 1, 15, 8, 10, 0, 4, 10, 0, 16, 16, 16, 13, 16, 8, 11, 12, 10, 4, 2, 16, 1, 6, 14, 13, 16, 16, 8, 15, 13, 16, 7, 0, 5, 16, 12, 5, 16, 15, 13, 16, 16, 9, 5, 11, 16, 13, 2, 14, 7, 3, 15, 1, 15, 10, 16, 15, 9, 5, 6, 1, 6, 16, 12, 13, 6, 11, 7, 12, 16, 4, 16, 16, 7, 16, 16, 16, 13, 0, 16, 6, 9, 2, 7, 16, 0, 16, 16, 16, 16, 16, 2, 15, 12, 8, 16, 1, 14, 16, 16, 16, 16, 16, 16, 16, 0, 16, 16, 16, 6, 16, 13, 3, 11, 2, 4, 16, 5, 1, 3, 2, 11, 12, 16, 16, 5, 16, 16, 16, 11, 9, 14, 8, 11, 3, 16, 16, 14, 9, 16, 16, 4, 16, 2, 8, 15, 9, 12, 4, 12, 15, 16, 16, 3, 16, 11, 16, 0, 6, 16, 10, 4, 16, 16, 2, 13, 7, 16, 5, 16, 13, 13, 7, 16, 16, 16, 11, 15, 16, 16, 11, 16, 5, 16, 4, 6, 2, 4, 4, 9, 6, 16, 3, 16, 3, 16, 16, 16, 16, 6, 3, 15, 2, 16, 7, 7, 13, 16, 4, 14, 1, 16, 2, 7, 2, 16, 16, 7, 13, 16, 16, 10, 16, 12, 16, 16, 16, 5, 3, 16, 16, 8, 16, 13, 0, 6, 5, 10, 1, 16, 12, 10, 16, 6, 16, 9, 16, 16, 11, 4, 9, 16, 13, 16, 3, 16, 0, 10, 11, 12, 16, 16, 16, 16, 15, 16, 15, 5, 7, 13, 7, 16, 12, 14, 0, 1, 16, 7, 16, 16, 16, 12, 12, 11, 16, 16, 16, 4, 16, 16, 16, 16, 16, 2, 1, 0, 6, 16, 16, 16, 16, 1, 16, 16, 2, 15, 1, 5, 6, 7, 2, 6, 16, 16, 16, 8, 14, 7, 16, 5, 13, 14, 16, 11, 16, 4, 6, 16, 6, 16, 12, 16, 16, 8, 3, 16, 16, 16, 16, 16, 16, 16, 0, 5, 11, 3, 13, 8, 3, 2, 16, 10, 16, 9, 11, 16, 10, 16, 16, 16, 15, 16, 11, 1, 16, 16, 16, 16, 1, 4, 9, 11, 12, 16, 8, 16, 11, 9, 6, 3, 16, 13, 3, 7, 0, 13, 8, 10, 16, 12, 16, 10, 13, 10, 16, 2, 10, 3, 4, 3, 7, 5, 8], [0, 1, 2, 3, 4, 5, 0, 6, 7, 8, 9, 10, 11, 10, 12, 2, 12, 7, 13, 1, 9, 6, 7, 5, 12, 11, 0, 5, 9, 7, 3, 2, 8, 10, 10, 9, 7, 14, 15, 0, 1, 3, 14, 4, 11, 5, 11, 6, 3, 0, 11, 13, 15, 8, 7, 13, 10, 1, 14, 11, 13, 4, 9, 6, 13, 4, 13, 2, 5, 11, 11, 14, 11, 2, 10, 13, 2, 15, 6, 7, 10, 1, 3, 1, 13, 3, 2, 8, 8, 6, 3, 12, 11, 12, 0, 5, 5, 3, 2, 5, 15, 14, 15, 1, 3, 13, 3, 8, 4, 0, 1, 8, 1, 5, 14, 8, 13, 8, 15, 8, 12, 4, 9, 6, 7, 10, 13, 10, 7, 14, 15, 4, 14, 12, 13, 11, 10, 14, 4, 4, 13, 6, 6, 0, 8, 6, 8, 0, 10, 13, 13, 5, 9, 14, 15, 3, 9, 15, 4, 7, 0, 5, 11, 4, 10, 0, 9, 6, 8, 1, 0, 5, 15, 9, 4, 4, 2, 12, 15, 14, 1, 12, 0, 8, 8, 2, 3, 14, 1, 12, 10, 2, 7, 6, 1, 5, 1, 9, 8, 4, 3, 2, 0, 7, 4, 1, 10, 11, 6, 14, 7, 3, 5, 13, 12, 4, 10, 3, 3, 10, 8, 15, 5, 14, 6, 15, 7, 5, 10, 12, 12, 2, 4, 15, 9, 9, 1, 9, 2, 2, 6, 7, 9, 5, 7, 10, 12, 14, 5, 10, 14, 1, 12, 5, 15, 13, 11, 14, 10, 4, 11, 10, 16, 16, 16, 1, 16, 11, 7, 13, 14, 5, 2, 16, 1, 12, 15, 0, 16, 16, 8, 13, 0, 16, 7, 0, 5, 16, 13, 5, 16, 3, 0, 16, 16, 10, 12, 9, 16, 1, 2, 8, 4, 3, 3, 15, 3, 11, 16, 3, 9, 12, 6, 15, 6, 16, 13, 0, 6, 9, 4, 13, 16, 5, 16, 16, 4, 16, 16, 16, 0, 10, 16, 12, 9, 6, 7, 16, 0, 16, 16, 16, 16, 16, 6, 3, 2, 8, 16, 1, 15, 16, 16, 16, 16, 16, 16, 16, 10, 16, 16, 16, 12, 16, 1, 14, 9, 6, 4, 16, 12, 15, 3, 6, 7, 13, 16, 16, 5, 16, 16, 16, 9, 10, 8, 11, 9, 14, 16, 16, 15, 9, 16, 16, 4, 16, 2, 11, 13, 9, 13, 5, 13, 3, 16, 16, 14, 16, 9, 16, 10, 12, 16, 11, 5, 16, 16, 6, 0, 7, 16, 5, 16, 1, 0, 7, 16, 16, 16, 9, 13, 16, 16, 9, 16, 5, 16, 4, 12, 2, 5, 4, 10, 12, 16, 14, 16, 14, 16, 16, 16, 16, 12, 3, 3, 6, 16, 4, 4, 0, 16, 5, 15, 15, 16, 2, 7, 6, 16, 16, 4, 0, 16, 16, 11, 16, 2, 16, 16, 16, 5, 3, 16, 16, 8, 16, 1, 10, 12, 12, 14, 1, 16, 2, 14, 16, 12, 16, 10, 16, 16, 9, 4, 9, 16, 0, 16, 3, 16, 0, 11, 7, 13, 16, 16, 16, 16, 3, 16, 3, 5, 4, 1, 7, 16, 13, 15, 0, 1, 16, 4, 16, 16, 16, 2, 2, 9, 16, 16, 16, 5, 16, 16, 16, 16, 16, 2, 15, 10, 6, 16, 16, 16, 16, 1, 16, 16, 6, 13, 1, 12, 12, 4, 2, 12, 16, 16, 16, 11, 8, 7, 16, 12, 0, 15, 16, 7, 16, 4, 6, 16, 12, 16, 2, 16, 16, 11, 14, 16, 16, 16, 16, 16, 16, 16, 0, 5, 9, 3, 0, 8, 14, 2, 16, 11, 16, 10, 9, 16, 11, 16, 16, 16, 13, 16, 9, 15, 16, 16, 16, 16, 15, 5, 10, 9, 2, 16, 8, 16, 7, 10, 6, 3, 16, 0, 3, 4, 10, 0, 11, 14, 16, 2, 16, 14, 1, 11, 16, 6, 14, 3, 5, 14, 4, 12, 8], [0, 1, 2, 3, 4, 5, 0, 6, 7, 8, 9, 10, 3, 4, 9, 2, 8, 11, 10, 1, 9, 7, 7, 12, 9, 3, 13, 12, 1, 11, 3, 2, 14, 4, 10, 1, 7, 12, 0, 13, 14, 5, 12, 6, 13, 5, 13, 7, 3, 0, 13, 10, 15, 14, 11, 2, 10, 14, 11, 13, 2, 4, 1, 6, 10, 6, 2, 2, 12, 13, 3, 11, 3, 15, 4, 10, 15, 0, 6, 7, 4, 14, 5, 14, 2, 5, 15, 14, 8, 6, 3, 9, 13, 9, 0, 5, 5, 5, 15, 12, 0, 12, 15, 1, 3, 2, 5, 14, 6, 0, 14, 8, 14, 5, 11, 8, 10, 14, 15, 8, 9, 6, 1, 7, 11, 10, 2, 10, 7, 12, 0, 4, 12, 8, 10, 3, 4, 11, 6, 4, 2, 7, 7, 13, 14, 6, 8, 0, 4, 2, 10, 5, 9, 11, 15, 5, 1, 0, 4, 7, 13, 12, 3, 6, 4, 0, 1, 7, 8, 1, 13, 5, 15, 9, 4, 6, 15, 8, 15, 11, 1, 8, 13, 14, 14, 15, 3, 11, 14, 9, 10, 15, 7, 7, 14, 12, 1, 9, 14, 6, 5, 2, 13, 11, 4, 1, 10, 3, 7, 11, 11, 3, 5, 10, 9, 4, 4, 5, 5, 4, 8, 0, 5, 12, 7, 15, 11, 5, 4, 8, 8, 15, 4, 15, 1, 9, 1, 9, 2, 2, 6, 11, 9, 12, 7, 10, 8, 12, 5, 4, 12, 14, 8, 12, 0, 2, 13, 11, 10, 4, 3, 10, 16, 16, 16, 14, 16, 13, 11, 10, 11, 12, 2, 16, 1, 9, 15, 13, 16, 16, 8, 2, 13, 16, 7, 0, 5, 16, 10, 5, 16, 5, 13, 16, 16, 4, 8, 1, 16, 14, 2, 14, 6, 3, 5, 0, 5, 3, 16, 5, 9, 8, 6, 0, 6, 16, 10, 13, 6, 1, 6, 10, 16, 12, 16, 16, 6, 16, 16, 16, 13, 10, 16, 9, 9, 7, 7, 16, 0, 16, 16, 16, 16, 16, 7, 5, 15, 8, 16, 1, 15, 16, 16, 16, 16, 16, 16, 16, 10, 16, 16, 16, 9, 16, 14, 12, 1, 7, 4, 16, 8, 0, 3, 7, 11, 10, 16, 16, 5, 16, 16, 16, 1, 4, 14, 13, 1, 12, 16, 16, 15, 9, 16, 16, 4, 16, 2, 13, 2, 9, 10, 12, 10, 5, 16, 16, 12, 16, 1, 16, 10, 9, 16, 3, 12, 16, 16, 7, 13, 7, 16, 5, 16, 14, 13, 7, 16, 16, 16, 1, 2, 16, 16, 1, 16, 5, 16, 4, 9, 2, 12, 4, 4, 9, 16, 12, 16, 12, 16, 16, 16, 16, 9, 3, 5, 7, 16, 6, 6, 13, 16, 12, 15, 0, 16, 2, 7, 7, 16, 16, 6, 13, 16, 16, 3, 16, 15, 16, 16, 16, 5, 3, 16, 16, 8, 16, 14, 10, 9, 8, 11, 1, 16, 15, 11, 16, 9, 16, 4, 16, 16, 1, 4, 9, 16, 13, 16, 3, 16, 0, 3, 11, 10, 16, 16, 16, 16, 5, 16, 5, 5, 6, 14, 7, 16, 10, 15, 0, 1, 16, 6, 16, 16, 16, 15, 15, 1, 16, 16, 16, 12, 16, 16, 16, 16, 16, 2, 0, 10, 6, 16, 16, 16, 16, 1, 16, 16, 7, 2, 1, 8, 9, 6, 2, 9, 16, 16, 16, 13, 14, 7, 16, 8, 13, 15, 16, 11, 16, 4, 6, 16, 9, 16, 15, 16, 16, 13, 12, 16, 16, 16, 16, 16, 16, 16, 0, 5, 1, 3, 13, 8, 12, 2, 16, 3, 16, 4, 1, 16, 3, 16, 16, 16, 2, 16, 1, 0, 16, 16, 16, 16, 0, 12, 4, 1, 15, 16, 8, 16, 11, 4, 6, 3, 16, 13, 3, 6, 10, 13, 13, 11, 16, 15, 16, 11, 14, 3, 16, 7, 11, 3, 12, 12, 6, 8, 8], [0, 1, 2, 3, 4, 4, 0, 5, 6, 7, 8, 3, 9, 10, 11, 2, 2, 1, 8, 1, 8, 12, 6, 0, 11, 9, 13, 0, 7, 1, 3, 2, 6, 10, 3, 7, 6, 14, 15, 13, 16, 10, 14, 14, 16, 4, 16, 12, 3, 0, 16, 8, 13, 6, 1, 9, 3, 16, 12, 16, 9, 4, 7, 5, 8, 14, 9, 2, 0, 16, 9, 12, 9, 5, 10, 8, 5, 15, 5, 6, 10, 16, 10, 16, 9, 10, 5, 6, 7, 5, 3, 11, 16, 11, 0, 4, 4, 10, 5, 0, 15, 14, 13, 1, 3, 9, 10, 6, 14, 0, 16, 7, 16, 4, 12, 7, 8, 6, 13, 7, 11, 14, 7, 12, 1, 3, 9, 3, 6, 14, 15, 4, 14, 2, 8, 9, 10, 12, 14, 4, 9, 12, 12, 13, 6, 5, 7, 0, 10, 9, 8, 4, 8, 12, 13, 10, 7, 15, 4, 6, 13, 0, 9, 14, 10, 0, 7, 12, 7, 1, 13, 4, 13, 8, 4, 14, 5, 2, 13, 12, 1, 2, 13, 6, 6, 5, 3, 12, 16, 11, 3, 5, 6, 12, 16, 0, 1, 8, 6, 14, 10, 2, 13, 1, 4, 1, 3, 9, 12, 12, 1, 3, 4, 8, 11, 4, 10, 10, 10, 10, 7, 15, 4, 14, 12, 13, 1, 4, 10, 2, 2, 5, 4, 13, 7, 8, 1, 8, 2, 2, 5, 1, 8, 0, 6, 3, 2, 14, 4, 10, 14, 16, 2, 0, 15, 9, 16, 12, 3, 4, 9, 3, 17, 17, 17, 16, 17, 16, 1, 8, 12, 0, 2, 17, 1, 11, 13, 13, 17, 17, 7, 9, 13, 17, 6, 0, 4, 17, 8, 4, 17, 10, 13, 17, 17, 10, 2, 7, 17, 16, 2, 6, 14, 3, 10, 15, 10, 9, 17, 10, 8, 2, 5, 15, 5, 17, 8, 13, 5, 7, 14, 8, 17, 0, 17, 17, 14, 17, 17, 17, 13, 3, 17, 11, 8, 12, 6, 17, 0, 17, 17, 17, 17, 17, 12, 10, 5, 7, 17, 1, 13, 17, 17, 17, 17, 17, 17, 17, 3, 17, 17, 17, 11, 17, 16, 14, 7, 12, 4, 17, 2, 15, 3, 12, 1, 8, 17, 17, 4, 17, 17, 17, 7, 10, 6, 16, 7, 14, 17, 17, 13, 8, 17, 17, 4, 17, 2, 16, 9, 8, 8, 0, 8, 10, 17, 17, 14, 17, 7, 17, 3, 11, 17, 9, 0, 17, 17, 12, 13, 6, 17, 4, 17, 16, 13, 6, 17, 17, 17, 7, 9, 17, 17, 7, 17, 4, 17, 4, 11, 2, 0, 4, 10, 11, 17, 14, 17, 14, 17, 17, 17, 17, 11, 3, 10, 12, 17, 14, 14, 13, 17, 0, 13, 15, 17, 2, 6, 12, 17, 17, 14, 13, 17, 17, 9, 17, 5, 17, 17, 17, 4, 3, 17, 17, 7, 17, 16, 3, 11, 2, 12, 1, 17, 5, 12, 17, 11, 17, 10, 17, 17, 7, 4, 8, 17, 13, 17, 3, 17, 0, 9, 1, 8, 17, 17, 17, 17, 10, 17, 10, 4, 14, 16, 6, 17, 8, 13, 0, 1, 17, 14, 17, 17, 17, 5, 5, 7, 17, 17, 17, 0, 17, 17, 17, 17, 17, 2, 15, 3, 5, 17, 17, 17, 17, 1, 17, 17, 12, 9, 1, 2, 11, 14, 2, 11, 17, 17, 17, 16, 6, 6, 17, 2, 13, 13, 17, 1, 17, 4, 5, 17, 11, 17, 5, 17, 17, 16, 14, 17, 17, 17, 17, 17, 17, 17, 0, 4, 7, 3, 13, 7, 14, 2, 17, 9, 17, 10, 7, 17, 9, 17, 17, 17, 9, 17, 7, 15, 17, 17, 17, 17, 15, 0, 10, 7, 5, 17, 7, 17, 1, 10, 5, 3, 17, 13, 3, 14, 3, 13, 16, 12, 17, 5, 17, 12, 16, 9, 17, 12, 12, 3, 0, 14, 14, 2, 7], [0, 1, 2, 3, 4, 5, 0, 6, 7, 8, 9, 9, 10, 11, 11, 2, 12, 13, 14, 1, 9, 15, 7, 3, 11, 10, 14, 3, 16, 13, 3, 2, 17, 11, 9, 16, 7, 16, 10, 14, 7, 4, 16, 5, 1, 5, 1, 15, 3, 0, 1, 14, 13, 17, 13, 15, 9, 7, 6, 1, 15, 4, 16, 6, 14, 5, 15, 2, 3, 1, 10, 6, 10, 17, 11, 14, 17, 10, 6, 7, 11, 7, 4, 7, 15, 4, 17, 17, 8, 6, 3, 11, 1, 11, 0, 5, 5, 4, 17, 3, 10, 16, 13, 1, 3, 15, 4, 17, 5, 0, 7, 8, 7, 5, 6, 8, 14, 17, 13, 8, 11, 5, 16, 15, 13, 9, 15, 9, 7, 16, 10, 4, 16, 12, 14, 10, 11, 6, 5, 4, 15, 15, 15, 14, 17, 6, 8, 0, 11, 15, 14, 5, 9, 6, 13, 4, 16, 10, 4, 7, 14, 3, 10, 5, 11, 0, 16, 15, 8, 1, 14, 5, 13, 9, 4, 5, 17, 12, 13, 6, 1, 12, 14, 17, 17, 17, 3, 6, 7, 11, 9, 17, 7, 15, 7, 3, 1, 9, 17, 5, 4, 2, 14, 13, 4, 1, 9, 10, 15, 6, 13, 3, 5, 14, 11, 4, 11, 4, 4, 11, 8, 10, 5, 16, 15, 13, 13, 5, 11, 12, 12, 17, 4, 13, 16, 9, 1, 9, 2, 2, 6, 13, 9, 3, 7, 9, 12, 16, 5, 11, 16, 7, 12, 3, 10, 15, 1, 6, 9, 4, 10, 9, 18, 18, 18, 7, 18, 1, 13, 14, 6, 3, 2, 18, 1, 11, 13, 14, 18, 18, 8, 15, 14, 18, 7, 0, 5, 18, 14, 5, 18, 4, 14, 18, 18, 11, 12, 16, 18, 7, 2, 17, 5, 3, 4, 10, 4, 10, 18, 4, 9, 12, 6, 10, 6, 18, 14, 14, 6, 16, 5, 14, 18, 3, 18, 18, 5, 18, 18, 18, 14, 9, 18, 11, 9, 15, 7, 18, 0, 18, 18, 18, 18, 18, 15, 4, 17, 8, 18, 1, 13, 18, 18, 18, 18, 18, 18, 18, 9, 18, 18, 18, 11, 18, 7, 16, 16, 15, 4, 18, 12, 10, 3, 15, 13, 14, 18, 18, 5, 18, 18, 18, 16, 11, 17, 1, 16, 16, 18, 18, 13, 9, 18, 18, 4, 18, 2, 1, 15, 9, 14, 3, 14, 4, 18, 18, 16, 18, 16, 18, 9, 11, 18, 10, 3, 18, 18, 15, 14, 7, 18, 5, 18, 7, 14, 7, 18, 18, 18, 16, 15, 18, 18, 16, 18, 5, 18, 4, 11, 2, 3, 4, 11, 11, 18, 16, 18, 16, 18, 18, 18, 18, 11, 3, 4, 15, 18, 5, 5, 14, 18, 3, 13, 10, 18, 2, 7, 15, 18, 18, 5, 14, 18, 18, 10, 18, 17, 18, 18, 18, 5, 3, 18, 18, 8, 18, 7, 9, 11, 12, 6, 1, 18, 17, 6, 18, 11, 18, 11, 18, 18, 16, 4, 9, 18, 14, 18, 3, 18, 0, 10, 13, 14, 18, 18, 18, 18, 4, 18, 4, 5, 5, 7, 7, 18, 14, 13, 0, 1, 18, 5, 18, 18, 18, 17, 17, 16, 18, 18, 18, 3, 18, 18, 18, 18, 18, 2, 10, 9, 6, 18, 18, 18, 18, 1, 18, 18, 15, 15, 1, 12, 11, 5, 2, 11, 18, 18, 18, 1, 17, 7, 18, 12, 14, 13, 18, 13, 18, 4, 6, 18, 11, 18, 17, 18, 18, 1, 16, 18, 18, 18, 18, 18, 18, 18, 0, 5, 16, 3, 14, 8, 16, 2, 18, 10, 18, 11, 16, 18, 10, 18, 18, 18, 15, 18, 16, 10, 18, 18, 18, 18, 10, 3, 11, 16, 17, 18, 8, 18, 13, 11, 6, 3, 18, 14, 3, 5, 9, 14, 1, 6, 18, 17, 18, 6, 7, 10, 18, 15, 6, 3, 3, 16, 5, 12, 8], [0, 1, 2, 3, 4, 1, 0, 5, 6, 5, 3, 7, 6, 8, 4, 2, 9, 2, 10, 1, 3, 11, 6, 12, 4, 6, 9, 12, 13, 2, 3, 2, 14, 8, 7, 13, 6, 11, 14, 9, 0, 12, 11, 15, 10, 1, 10, 11, 3, 0, 10, 10, 16, 14, 2, 17, 7, 0, 16, 10, 17, 4, 13, 5, 10, 15, 17, 2, 12, 10, 6, 16, 6, 13, 8, 10, 13, 14, 5, 6, 8, 0, 12, 0, 17, 12, 13, 14, 5, 5, 3, 4, 10, 4, 0, 1, 1, 12, 13, 12, 14, 11, 16, 1, 3, 17, 12, 14, 15, 0, 0, 5, 0, 1, 16, 5, 10, 14, 16, 5, 4, 15, 13, 11, 2, 7, 17, 7, 6, 11, 14, 4, 11, 9, 10, 6, 8, 16, 15, 4, 17, 11, 11, 9, 14, 5, 5, 0, 8, 17, 10, 1, 3, 16, 16, 12, 13, 14, 4, 6, 9, 12, 6, 15, 8, 0, 13, 11, 5, 1, 9, 1, 16, 3, 4, 15, 13, 9, 16, 16, 1, 9, 9, 14, 14, 13, 3, 16, 0, 4, 7, 13, 6, 11, 0, 12, 1, 3, 14, 15, 12, 2, 9, 2, 4, 1, 7, 6, 11, 16, 2, 3, 1, 10, 4, 4, 8, 12, 12, 8, 5, 14, 1, 11, 11, 16, 2, 1, 8, 9, 9, 13, 4, 16, 13, 3, 1, 3, 2, 2, 5, 2, 3, 12, 6, 7, 9, 11, 1, 8, 11, 0, 9, 12, 14, 17, 10, 16, 7, 4, 6, 7, 18, 18, 18, 0, 18, 10, 2, 10, 16, 12, 2, 18, 1, 4, 16, 9, 18, 18, 5, 17, 9, 18, 6, 0, 1, 18, 10, 1, 18, 12, 9, 18, 18, 8, 9, 13, 18, 0, 2, 14, 15, 3, 12, 14, 12, 6, 18, 12, 3, 9, 5, 14, 5, 18, 10, 9, 5, 13, 15, 10, 18, 12, 18, 18, 15, 18, 18, 18, 9, 7, 18, 4, 3, 11, 6, 18, 0, 18, 18, 18, 18, 18, 11, 12, 13, 5, 18, 1, 16, 18, 18, 18, 18, 18, 18, 18, 7, 18, 18, 18, 4, 18, 0, 11, 13, 11, 4, 18, 9, 14, 3, 11, 2, 10, 18, 18, 1, 18, 18, 18, 13, 8, 14, 10, 13, 11, 18, 18, 16, 3, 18, 18, 4, 18, 2, 10, 17, 3, 10, 12, 10, 12, 18, 18, 11, 18, 13, 18, 7, 4, 18, 6, 12, 18, 18, 11, 9, 6, 18, 1, 18, 0, 9, 6, 18, 18, 18, 13, 17, 18, 18, 13, 18, 1, 18, 4, 4, 2, 12, 4, 8, 4, 18, 11, 18, 11, 18, 18, 18, 18, 4, 3, 12, 11, 18, 15, 15, 9, 18, 12, 16, 14, 18, 2, 6, 11, 18, 18, 15, 9, 18, 18, 6, 18, 13, 18, 18, 18, 1, 3, 18, 18, 5, 18, 0, 7, 4, 9, 16, 1, 18, 13, 16, 18, 4, 18, 8, 18, 18, 13, 4, 3, 18, 9, 18, 3, 18, 0, 6, 2, 10, 18, 18, 18, 18, 12, 18, 12, 1, 15, 0, 6, 18, 10, 16, 0, 1, 18, 15, 18, 18, 18, 13, 13, 13, 18, 18, 18, 12, 18, 18, 18, 18, 18, 2, 14, 7, 5, 18, 18, 18, 18, 1, 18, 18, 11, 17, 1, 9, 4, 15, 2, 4, 18, 18, 18, 10, 14, 6, 18, 9, 9, 16, 18, 2, 18, 4, 5, 18, 4, 18, 13, 18, 18, 10, 11, 18, 18, 18, 18, 18, 18, 18, 0, 1, 13, 3, 9, 5, 11, 2, 18, 6, 18, 8, 13, 18, 6, 18, 18, 18, 17, 18, 13, 14, 18, 18, 18, 18, 14, 12, 8, 13, 13, 18, 5, 18, 2, 8, 5, 3, 18, 9, 3, 15, 7, 9, 10, 16, 18, 13, 18, 16, 0, 6, 18, 11, 16, 3, 12, 11, 15, 9, 5], [0, 1, 2, 3, 4, 5, 0, 6, 7, 0, 8, 9, 10, 3, 11, 2, 12, 9, 12, 1, 8, 13, 7, 7, 11, 10, 8, 7, 14, 9, 3, 2, 1, 3, 9, 14, 7, 15, 16, 8, 16, 11, 15, 10, 4, 5, 4, 13, 3, 0, 4, 12, 17, 1, 9, 6, 9, 16, 2, 4, 6, 4, 14, 6, 12, 10, 6, 2, 7, 4, 10, 2, 10, 17, 3, 12, 17, 16, 6, 7, 3, 16, 11, 16, 6, 11, 17, 1, 0, 6, 3, 11, 4, 11, 0, 5, 5, 11, 17, 7, 16, 15, 17, 1, 3, 6, 11, 1, 10, 0, 16, 0, 16, 5, 2, 0, 12, 1, 17, 0, 11, 10, 14, 13, 9, 9, 6, 9, 7, 15, 16, 4, 15, 12, 12, 10, 3, 2, 10, 4, 6, 13, 13, 8, 1, 6, 0, 0, 3, 6, 12, 5, 8, 2, 17, 11, 14, 16, 4, 7, 8, 7, 10, 10, 3, 0, 14, 13, 0, 1, 8, 5, 17, 8, 4, 10, 17, 12, 17, 2, 1, 12, 8, 1, 1, 17, 3, 2, 16, 11, 9, 17, 7, 13, 16, 7, 1, 8, 1, 10, 11, 2, 8, 9, 4, 1, 9, 10, 13, 2, 9, 3, 5, 12, 11, 4, 3, 11, 11, 3, 0, 16, 5, 15, 13, 17, 9, 5, 3, 12, 12, 17, 4, 17, 14, 8, 1, 8, 2, 2, 6, 9, 8, 7, 7, 9, 12, 15, 5, 3, 15, 16, 12, 7, 16, 6, 4, 2, 9, 4, 10, 9, 18, 18, 18, 16, 18, 4, 9, 12, 2, 7, 2, 18, 1, 11, 17, 8, 18, 18, 0, 6, 8, 18, 7, 0, 5, 18, 12, 5, 18, 11, 8, 18, 18, 3, 12, 14, 18, 16, 2, 1, 10, 3, 11, 16, 11, 10, 18, 11, 8, 12, 6, 16, 6, 18, 12, 8, 6, 14, 10, 12, 18, 7, 18, 18, 10, 18, 18, 18, 8, 9, 18, 11, 8, 13, 7, 18, 0, 18, 18, 18, 18, 18, 13, 11, 17, 0, 18, 1, 17, 18, 18, 18, 18, 18, 18, 18, 9, 18, 18, 18, 11, 18, 16, 15, 14, 13, 4, 18, 12, 16, 3, 13, 9, 12, 18, 18, 5, 18, 18, 18, 14, 3, 1, 4, 14, 15, 18, 18, 17, 8, 18, 18, 4, 18, 2, 4, 6, 8, 12, 7, 12, 11, 18, 18, 15, 18, 14, 18, 9, 11, 18, 10, 7, 18, 18, 13, 8, 7, 18, 5, 18, 16, 8, 7, 18, 18, 18, 14, 6, 18, 18, 14, 18, 5, 18, 4, 11, 2, 7, 4, 3, 11, 18, 15, 18, 15, 18, 18, 18, 18, 11, 3, 11, 13, 18, 10, 10, 8, 18, 7, 17, 16, 18, 2, 7, 13, 18, 18, 10, 8, 18, 18, 10, 18, 17, 18, 18, 18, 5, 3, 18, 18, 0, 18, 16, 9, 11, 12, 2, 1, 18, 17, 2, 18, 11, 18, 3, 18, 18, 14, 4, 8, 18, 8, 18, 3, 18, 0, 10, 9, 12, 18, 18, 18, 18, 11, 18, 11, 5, 10, 16, 7, 18, 12, 17, 0, 1, 18, 10, 18, 18, 18, 17, 17, 14, 18, 18, 18, 7, 18, 18, 18, 18, 18, 2, 16, 9, 6, 18, 18, 18, 18, 1, 18, 18, 13, 6, 1, 12, 11, 10, 2, 11, 18, 18, 18, 4, 1, 7, 18, 12, 8, 17, 18, 9, 18, 4, 6, 18, 11, 18, 17, 18, 18, 4, 15, 18, 18, 18, 18, 18, 18, 18, 0, 5, 14, 3, 8, 0, 15, 2, 18, 10, 18, 3, 14, 18, 10, 18, 18, 18, 6, 18, 14, 16, 18, 18, 18, 18, 16, 7, 3, 14, 17, 18, 0, 18, 9, 3, 6, 3, 18, 8, 3, 10, 9, 8, 4, 2, 18, 17, 18, 2, 16, 10, 18, 13, 2, 3, 7, 15, 10, 12, 0], [0, 1, 1, 2, 3, 4, 0, 5, 5, 6, 4, 6, 7, 8, 9, 1, 0, 10, 11, 1, 4, 8, 5, 3, 9, 7, 9, 3, 12, 10, 2, 1, 13, 8, 6, 12, 5, 7, 14, 9, 11, 14, 7, 2, 13, 4, 13, 8, 2, 0, 13, 11, 12, 13, 10, 10, 6, 11, 15, 13, 10, 3, 12, 5, 11, 2, 10, 1, 3, 13, 7, 15, 7, 16, 8, 11, 16, 14, 5, 5, 8, 11, 14, 11, 10, 14, 16, 13, 6, 5, 2, 9, 13, 9, 0, 4, 4, 14, 16, 3, 14, 7, 12, 1, 2, 10, 14, 13, 2, 0, 11, 6, 11, 4, 15, 6, 11, 13, 12, 6, 9, 2, 12, 8, 10, 6, 10, 6, 5, 7, 14, 3, 7, 0, 11, 7, 8, 15, 2, 3, 10, 8, 8, 9, 13, 5, 6, 0, 8, 10, 11, 4, 4, 15, 12, 14, 12, 14, 3, 5, 9, 3, 7, 2, 8, 0, 12, 8, 6, 1, 9, 4, 12, 4, 3, 2, 16, 0, 12, 15, 1, 0, 9, 13, 13, 16, 2, 15, 11, 9, 6, 16, 5, 8, 11, 3, 1, 4, 13, 2, 14, 1, 9, 10, 3, 1, 6, 7, 8, 15, 10, 2, 4, 11, 9, 3, 8, 14, 14, 8, 6, 14, 4, 7, 8, 12, 10, 4, 8, 0, 0, 16, 3, 12, 12, 4, 1, 4, 1, 1, 5, 10, 4, 3, 5, 6, 0, 7, 4, 8, 7, 11, 0, 3, 14, 10, 13, 15, 6, 3, 7, 6, 17, 17, 17, 11, 17, 13, 10, 11, 15, 3, 1, 17, 1, 9, 12, 9, 17, 17, 6, 10, 9, 17, 5, 0, 4, 17, 11, 4, 17, 14, 9, 17, 17, 8, 0, 12, 17, 11, 1, 13, 2, 2, 14, 14, 14, 7, 17, 14, 4, 0, 5, 14, 5, 17, 11, 9, 5, 12, 2, 11, 17, 3, 17, 17, 2, 17, 17, 17, 9, 6, 17, 9, 4, 8, 5, 17, 0, 17, 17, 17, 17, 17, 8, 14, 16, 6, 17, 1, 12, 17, 17, 17, 17, 17, 17, 17, 6, 17, 17, 17, 9, 17, 11, 7, 12, 8, 3, 17, 0, 14, 2, 8, 10, 11, 17, 17, 4, 17, 17, 17, 12, 8, 13, 13, 12, 7, 17, 17, 12, 4, 17, 17, 3, 17, 1, 13, 10, 4, 11, 3, 11, 14, 17, 17, 7, 17, 12, 17, 6, 9, 17, 7, 3, 17, 17, 8, 9, 5, 17, 4, 17, 11, 9, 5, 17, 17, 17, 12, 10, 17, 17, 12, 17, 4, 17, 3, 9, 1, 3, 3, 8, 9, 17, 7, 17, 7, 17, 17, 17, 17, 9, 2, 14, 8, 17, 2, 2, 9, 17, 3, 12, 14, 17, 1, 5, 8, 17, 17, 2, 9, 17, 17, 7, 17, 16, 17, 17, 17, 4, 2, 17, 17, 6, 17, 11, 6, 9, 0, 15, 1, 17, 16, 15, 17, 9, 17, 8, 17, 17, 12, 3, 4, 17, 9, 17, 2, 17, 0, 7, 10, 11, 17, 17, 17, 17, 14, 17, 14, 4, 2, 11, 5, 17, 11, 12, 0, 1, 17, 2, 17, 17, 17, 16, 16, 12, 17, 17, 17, 3, 17, 17, 17, 17, 17, 1, 14, 6, 5, 17, 17, 17, 17, 1, 17, 17, 8, 10, 1, 0, 9, 2, 1, 9, 17, 17, 17, 13, 13, 5, 17, 0, 9, 12, 17, 10, 17, 3, 5, 17, 9, 17, 16, 17, 17, 13, 7, 17, 17, 17, 17, 17, 17, 17, 0, 4, 12, 2, 9, 6, 7, 1, 17, 7, 17, 8, 12, 17, 7, 17, 17, 17, 10, 17, 12, 14, 17, 17, 17, 17, 14, 3, 8, 12, 16, 17, 6, 17, 10, 8, 5, 2, 17, 9, 2, 2, 6, 9, 13, 15, 17, 16, 17, 15, 11, 7, 17, 8, 15, 2, 3, 7, 2, 0, 6], [0, 1, 2, 3, 4, 5, 0, 6, 5, 7, 4, 8, 9, 10, 1, 2, 6, 10, 0, 1, 4, 11, 5, 3, 1, 9, 8, 3, 12, 10, 3, 2, 13, 10, 8, 12, 5, 14, 12, 8, 7, 15, 14, 14, 16, 5, 16, 11, 3, 0, 16, 0, 11, 13, 10, 17, 8, 7, 17, 16, 17, 4, 12, 6, 0, 14, 17, 2, 3, 16, 9, 17, 9, 2, 10, 0, 2, 12, 6, 5, 10, 7, 15, 7, 17, 15, 2, 13, 7, 6, 3, 1, 16, 1, 0, 5, 5, 15, 2, 3, 12, 14, 11, 1, 3, 17, 15, 13, 14, 0, 7, 7, 7, 5, 17, 7, 0, 13, 11, 7, 1, 14, 12, 11, 10, 8, 17, 8, 5, 14, 12, 4, 14, 6, 0, 9, 10, 17, 14, 4, 17, 11, 11, 8, 13, 6, 7, 0, 10, 17, 0, 5, 4, 17, 11, 15, 12, 12, 4, 5, 8, 3, 9, 14, 10, 0, 12, 11, 7, 1, 8, 5, 11, 4, 4, 14, 2, 6, 11, 17, 1, 6, 8, 13, 13, 2, 3, 17, 7, 1, 8, 2, 5, 11, 7, 3, 1, 4, 13, 14, 15, 2, 8, 10, 4, 1, 8, 9, 11, 17, 10, 3, 5, 0, 1, 4, 10, 15, 15, 10, 7, 12, 5, 14, 11, 11, 10, 5, 10, 6, 6, 2, 4, 11, 12, 4, 1, 4, 2, 2, 6, 10, 4, 3, 5, 8, 6, 14, 5, 10, 14, 7, 6, 3, 12, 17, 16, 17, 8, 4, 9, 8, 18, 18, 18, 7, 18, 16, 10, 0, 17, 3, 2, 18, 1, 1, 11, 8, 18, 18, 7, 17, 8, 18, 5, 0, 5, 18, 0, 5, 18, 15, 8, 18, 18, 10, 6, 12, 18, 7, 2, 13, 14, 3, 15, 12, 15, 9, 18, 15, 4, 6, 6, 12, 6, 18, 0, 8, 6, 12, 14, 0, 18, 3, 18, 18, 14, 18, 18, 18, 8, 8, 18, 1, 4, 11, 5, 18, 0, 18, 18, 18, 18, 18, 11, 15, 2, 7, 18, 1, 11, 18, 18, 18, 18, 18, 18, 18, 8, 18, 18, 18, 1, 18, 7, 14, 12, 11, 4, 18, 6, 12, 3, 11, 10, 0, 18, 18, 5, 18, 18, 18, 12, 10, 13, 16, 12, 14, 18, 18, 11, 4, 18, 18, 4, 18, 2, 16, 17, 4, 0, 3, 0, 15, 18, 18, 14, 18, 12, 18, 8, 1, 18, 9, 3, 18, 18, 11, 8, 5, 18, 5, 18, 7, 8, 5, 18, 18, 18, 12, 17, 18, 18, 12, 18, 5, 18, 4, 1, 2, 3, 4, 10, 1, 18, 14, 18, 14, 18, 18, 18, 18, 1, 3, 15, 11, 18, 14, 14, 8, 18, 3, 11, 12, 18, 2, 5, 11, 18, 18, 14, 8, 18, 18, 9, 18, 2, 18, 18, 18, 5, 3, 18, 18, 7, 18, 7, 8, 1, 6, 17, 1, 18, 2, 17, 18, 1, 18, 10, 18, 18, 12, 4, 4, 18, 8, 18, 3, 18, 0, 9, 10, 0, 18, 18, 18, 18, 15, 18, 15, 5, 14, 7, 5, 18, 0, 11, 0, 1, 18, 14, 18, 18, 18, 2, 2, 12, 18, 18, 18, 3, 18, 18, 18, 18, 18, 2, 12, 8, 6, 18, 18, 18, 18, 1, 18, 18, 11, 17, 1, 6, 1, 14, 2, 1, 18, 18, 18, 16, 13, 5, 18, 6, 8, 11, 18, 10, 18, 4, 6, 18, 1, 18, 2, 18, 18, 16, 14, 18, 18, 18, 18, 18, 18, 18, 0, 5, 12, 3, 8, 7, 14, 2, 18, 9, 18, 10, 12, 18, 9, 18, 18, 18, 17, 18, 12, 12, 18, 18, 18, 18, 12, 3, 10, 12, 2, 18, 7, 18, 10, 10, 6, 3, 18, 8, 3, 14, 8, 8, 16, 17, 18, 2, 18, 17, 7, 9, 18, 11, 17, 3, 3, 14, 14, 6, 7], [0, 1, 2, 3, 4, 5, 0, 6, 7, 5, 8, 9, 10, 11, 12, 2, 9, 13, 14, 1, 8, 6, 7, 12, 12, 10, 11, 12, 15, 13, 3, 2, 0, 11, 9, 15, 7, 16, 13, 11, 17, 8, 16, 2, 15, 5, 15, 6, 3, 0, 15, 14, 18, 0, 13, 16, 9, 17, 7, 15, 16, 4, 15, 6, 14, 2, 16, 2, 12, 15, 10, 7, 10, 10, 11, 14, 10, 13, 6, 7, 11, 17, 8, 17, 16, 8, 10, 0, 5, 6, 3, 12, 15, 12, 0, 5, 5, 8, 10, 12, 13, 16, 18, 1, 3, 16, 8, 0, 2, 0, 17, 5, 17, 5, 7, 5, 14, 0, 18, 5, 12, 2, 15, 6, 13, 9, 16, 9, 7, 16, 13, 4, 16, 9, 14, 10, 11, 7, 2, 4, 16, 6, 6, 11, 0, 6, 5, 0, 11, 16, 14, 5, 8, 7, 18, 8, 15, 13, 4, 7, 11, 12, 10, 2, 11, 0, 15, 6, 5, 1, 11, 5, 18, 8, 4, 2, 10, 9, 18, 7, 1, 9, 11, 0, 0, 10, 3, 7, 17, 12, 9, 10, 7, 6, 17, 12, 1, 8, 0, 2, 8, 2, 11, 13, 4, 1, 9, 10, 6, 7, 13, 3, 5, 14, 12, 4, 11, 8, 8, 11, 5, 13, 5, 16, 6, 18, 13, 5, 11, 9, 9, 10, 4, 18, 15, 8, 1, 8, 2, 2, 6, 13, 8, 12, 7, 9, 9, 16, 5, 11, 16, 17, 9, 12, 13, 16, 15, 7, 9, 4, 10, 9, 19, 19, 19, 17, 19, 15, 13, 14, 7, 12, 2, 19, 1, 12, 18, 11, 19, 19, 5, 16, 11, 19, 7, 0, 5, 19, 14, 5, 19, 8, 11, 19, 19, 11, 9, 15, 19, 17, 2, 0, 2, 3, 8, 13, 8, 10, 19, 8, 8, 9, 6, 13, 6, 19, 14, 11, 6, 15, 2, 14, 19, 12, 19, 19, 2, 19, 19, 19, 11, 9, 19, 12, 8, 6, 7, 19, 0, 19, 19, 19, 19, 19, 6, 8, 10, 5, 19, 1, 18, 19, 19, 19, 19, 19, 19, 19, 9, 19, 19, 19, 12, 19, 17, 16, 15, 6, 4, 19, 9, 13, 3, 6, 13, 14, 19, 19, 5, 19, 19, 19, 15, 11, 0, 15, 15, 16, 19, 19, 18, 8, 19, 19, 4, 19, 2, 15, 16, 8, 14, 12, 14, 8, 19, 19, 16, 19, 15, 19, 9, 12, 19, 10, 12, 19, 19, 6, 11, 7, 19, 5, 19, 17, 11, 7, 19, 19, 19, 15, 16, 19, 19, 15, 19, 5, 19, 4, 12, 2, 12, 4, 11, 12, 19, 16, 19, 16, 19, 19, 19, 19, 12, 3, 8, 6, 19, 2, 2, 11, 19, 12, 18, 13, 19, 2, 7, 6, 19, 19, 2, 11, 19, 19, 10, 19, 10, 19, 19, 19, 5, 3, 19, 19, 5, 19, 17, 9, 12, 9, 7, 1, 19, 10, 7, 19, 12, 19, 11, 19, 19, 15, 4, 8, 19, 11, 19, 3, 19, 0, 10, 13, 14, 19, 19, 19, 19, 8, 19, 8, 5, 2, 17, 7, 19, 14, 18, 0, 1, 19, 2, 19, 19, 19, 10, 10, 15, 19, 19, 19, 12, 19, 19, 19, 19, 19, 2, 13, 9, 6, 19, 19, 19, 19, 1, 19, 19, 6, 16, 1, 9, 12, 2, 2, 12, 19, 19, 19, 15, 0, 7, 19, 9, 11, 18, 19, 13, 19, 4, 6, 19, 12, 19, 10, 19, 19, 15, 16, 19, 19, 19, 19, 19, 19, 19, 0, 5, 15, 3, 11, 5, 16, 2, 19, 10, 19, 11, 15, 19, 10, 19, 19, 19, 16, 19, 15, 13, 19, 19, 19, 19, 13, 12, 11, 15, 10, 19, 5, 19, 13, 11, 6, 3, 19, 11, 3, 2, 9, 11, 15, 7, 19, 10, 19, 7, 17, 10, 19, 6, 7, 3, 12, 16, 2, 9, 5], [0, 1, 2, 3, 4, 4, 0, 5, 6, 1, 7, 8, 6, 9, 8, 2, 10, 11, 9, 1, 7, 11, 6, 12, 8, 6, 10, 12, 2, 11, 3, 2, 13, 9, 8, 2, 6, 5, 13, 10, 3, 14, 5, 12, 0, 4, 0, 11, 3, 0, 0, 9, 7, 13, 11, 15, 8, 3, 15, 0, 15, 4, 2, 5, 9, 12, 15, 2, 12, 0, 6, 15, 6, 14, 9, 9, 14, 13, 5, 6, 9, 3, 14, 3, 15, 14, 14, 13, 1, 5, 3, 8, 0, 8, 0, 4, 4, 14, 14, 12, 13, 5, 7, 1, 3, 15, 14, 13, 12, 0, 3, 1, 3, 4, 15, 1, 9, 13, 7, 1, 8, 12, 2, 11, 11, 8, 15, 8, 6, 5, 13, 4, 5, 10, 9, 6, 9, 15, 12, 4, 15, 11, 11, 10, 13, 5, 1, 0, 9, 15, 9, 4, 7, 15, 7, 14, 2, 13, 4, 6, 10, 12, 6, 12, 9, 0, 2, 11, 1, 1, 10, 4, 7, 7, 4, 12, 14, 10, 7, 15, 1, 10, 10, 13, 13, 14, 3, 15, 3, 8, 8, 14, 6, 11, 3, 12, 1, 7, 13, 12, 14, 2, 10, 11, 4, 1, 8, 6, 11, 15, 11, 3, 4, 9, 8, 4, 9, 14, 14, 9, 1, 13, 4, 5, 11, 7, 11, 4, 9, 10, 10, 14, 4, 7, 2, 7, 1, 7, 2, 2, 5, 11, 7, 12, 6, 8, 10, 5, 4, 9, 5, 3, 10, 12, 13, 15, 0, 15, 8, 4, 6, 8, 16, 16, 16, 3, 16, 0, 11, 9, 15, 12, 2, 16, 1, 8, 7, 10, 16, 16, 1, 15, 10, 16, 6, 0, 4, 16, 9, 4, 16, 14, 10, 16, 16, 9, 10, 2, 16, 3, 2, 13, 12, 3, 14, 13, 14, 6, 16, 14, 7, 10, 5, 13, 5, 16, 9, 10, 5, 2, 12, 9, 16, 12, 16, 16, 12, 16, 16, 16, 10, 8, 16, 8, 7, 11, 6, 16, 0, 16, 16, 16, 16, 16, 11, 14, 14, 1, 16, 1, 7, 16, 16, 16, 16, 16, 16, 16, 8, 16, 16, 16, 8, 16, 3, 5, 2, 11, 4, 16, 10, 13, 3, 11, 11, 9, 16, 16, 4, 16, 16, 16, 2, 9, 13, 0, 2, 5, 16, 16, 7, 7, 16, 16, 4, 16, 2, 0, 15, 7, 9, 12, 9, 14, 16, 16, 5, 16, 2, 16, 8, 8, 16, 6, 12, 16, 16, 11, 10, 6, 16, 4, 16, 3, 10, 6, 16, 16, 16, 2, 15, 16, 16, 2, 16, 4, 16, 4, 8, 2, 12, 4, 9, 8, 16, 5, 16, 5, 16, 16, 16, 16, 8, 3, 14, 11, 16, 12, 12, 10, 16, 12, 7, 13, 16, 2, 6, 11, 16, 16, 12, 10, 16, 16, 6, 16, 14, 16, 16, 16, 4, 3, 16, 16, 1, 16, 3, 8, 8, 10, 15, 1, 16, 14, 15, 16, 8, 16, 9, 16, 16, 2, 4, 7, 16, 10, 16, 3, 16, 0, 6, 11, 9, 16, 16, 16, 16, 14, 16, 14, 4, 12, 3, 6, 16, 9, 7, 0, 1, 16, 12, 16, 16, 16, 14, 14, 2, 16, 16, 16, 12, 16, 16, 16, 16, 16, 2, 13, 8, 5, 16, 16, 16, 16, 1, 16, 16, 11, 15, 1, 10, 8, 12, 2, 8, 16, 16, 16, 0, 13, 6, 16, 10, 10, 7, 16, 11, 16, 4, 5, 16, 8, 16, 14, 16, 16, 0, 5, 16, 16, 16, 16, 16, 16, 16, 0, 4, 2, 3, 10, 1, 5, 2, 16, 6, 16, 9, 2, 16, 6, 16, 16, 16, 15, 16, 2, 13, 16, 16, 16, 16, 13, 12, 9, 2, 14, 16, 1, 16, 11, 9, 5, 3, 16, 10, 3, 12, 8, 10, 0, 15, 16, 14, 16, 15, 3, 6, 16, 11, 15, 3, 12, 5, 12, 10, 1], [0, 0, 1, 2, 3, 4, 0, 5, 3, 6, 7, 8, 9, 10, 2, 1, 11, 12, 8, 0, 7, 13, 3, 9, 2, 9, 14, 9, 15, 12, 2, 1, 10, 10, 8, 15, 3, 4, 6, 14, 15, 11, 4, 16, 17, 4, 17, 13, 2, 0, 17, 8, 1, 10, 12, 17, 8, 15, 16, 17, 17, 3, 15, 5, 8, 16, 17, 1, 9, 17, 9, 16, 9, 13, 10, 8, 13, 6, 5, 3, 10, 15, 11, 15, 17, 11, 13, 10, 6, 5, 2, 2, 17, 2, 0, 4, 4, 11, 13, 9, 6, 4, 1, 0, 2, 17, 11, 10, 16, 0, 15, 6, 15, 4, 16, 6, 8, 10, 1, 6, 2, 16, 15, 13, 12, 8, 17, 8, 3, 4, 6, 3, 4, 11, 8, 9, 10, 16, 16, 3, 17, 13, 13, 14, 10, 5, 6, 0, 10, 17, 8, 4, 7, 16, 1, 11, 15, 6, 3, 3, 14, 9, 9, 16, 10, 0, 15, 13, 6, 0, 14, 4, 1, 7, 3, 16, 13, 11, 1, 16, 0, 11, 14, 10, 10, 13, 2, 16, 15, 2, 8, 13, 3, 13, 15, 9, 0, 7, 10, 16, 11, 1, 14, 12, 3, 0, 8, 9, 13, 16, 12, 2, 4, 8, 2, 3, 10, 11, 11, 10, 6, 6, 4, 4, 13, 1, 12, 4, 10, 11, 11, 13, 3, 1, 15, 7, 0, 7, 1, 1, 5, 12, 7, 9, 3, 8, 11, 4, 4, 10, 4, 15, 11, 9, 6, 17, 17, 16, 8, 3, 9, 8, 18, 18, 18, 15, 18, 17, 12, 8, 16, 9, 1, 18, 0, 2, 1, 14, 18, 18, 6, 17, 14, 18, 3, 0, 4, 18, 8, 4, 18, 11, 14, 18, 18, 10, 11, 15, 18, 15, 1, 10, 16, 2, 11, 6, 11, 9, 18, 11, 7, 11, 5, 6, 5, 18, 8, 14, 5, 15, 16, 8, 18, 9, 18, 18, 16, 18, 18, 18, 14, 8, 18, 2, 7, 13, 3, 18, 0, 18, 18, 18, 18, 18, 13, 11, 13, 6, 18, 0, 1, 18, 18, 18, 18, 18, 18, 18, 8, 18, 18, 18, 2, 18, 15, 4, 15, 13, 3, 18, 11, 6, 2, 13, 12, 8, 18, 18, 4, 18, 18, 18, 15, 10, 10, 17, 15, 4, 18, 18, 1, 7, 18, 18, 3, 18, 1, 17, 17, 7, 8, 9, 8, 11, 18, 18, 4, 18, 15, 18, 8, 2, 18, 9, 9, 18, 18, 13, 14, 3, 18, 4, 18, 15, 14, 3, 18, 18, 18, 15, 17, 18, 18, 15, 18, 4, 18, 3, 2, 1, 9, 3, 10, 2, 18, 4, 18, 4, 18, 18, 18, 18, 2, 2, 11, 13, 18, 16, 16, 14, 18, 9, 1, 6, 18, 1, 3, 13, 18, 18, 16, 14, 18, 18, 9, 18, 13, 18, 18, 18, 4, 2, 18, 18, 6, 18, 15, 8, 2, 11, 16, 0, 18, 13, 16, 18, 2, 18, 10, 18, 18, 15, 3, 7, 18, 14, 18, 2, 18, 0, 9, 12, 8, 18, 18, 18, 18, 11, 18, 11, 4, 16, 15, 3, 18, 8, 1, 0, 0, 18, 16, 18, 18, 18, 13, 13, 15, 18, 18, 18, 9, 18, 18, 18, 18, 18, 1, 6, 8, 5, 18, 18, 18, 18, 0, 18, 18, 13, 17, 0, 11, 2, 16, 1, 2, 18, 18, 18, 17, 10, 3, 18, 11, 14, 1, 18, 12, 18, 3, 5, 18, 2, 18, 13, 18, 18, 17, 4, 18, 18, 18, 18, 18, 18, 18, 0, 4, 15, 2, 14, 6, 4, 1, 18, 9, 18, 10, 15, 18, 9, 18, 18, 18, 17, 18, 15, 6, 18, 18, 18, 18, 6, 9, 10, 15, 13, 18, 6, 18, 12, 10, 5, 2, 18, 14, 2, 16, 8, 14, 17, 16, 18, 13, 18, 16, 15, 9, 18, 13, 16, 2, 9, 4, 16, 11, 6], [0, 1, 2, 3, 4, 3, 0, 5, 6, 7, 8, 9, 5, 8, 2, 2, 10, 11, 7, 1, 8, 12, 6, 13, 2, 5, 14, 13, 15, 11, 3, 2, 11, 8, 9, 15, 6, 4, 15, 14, 9, 14, 4, 12, 10, 3, 10, 12, 3, 0, 10, 7, 1, 11, 11, 16, 9, 9, 0, 10, 16, 4, 15, 5, 7, 12, 16, 2, 13, 10, 5, 0, 5, 16, 8, 7, 16, 15, 5, 6, 8, 9, 14, 9, 16, 14, 16, 11, 7, 5, 3, 2, 10, 2, 0, 3, 3, 14, 16, 13, 15, 4, 1, 1, 3, 16, 14, 11, 12, 0, 9, 7, 9, 3, 0, 7, 7, 11, 1, 7, 2, 12, 15, 12, 11, 9, 16, 9, 6, 4, 15, 4, 4, 10, 7, 5, 8, 0, 12, 4, 16, 12, 12, 14, 11, 5, 7, 0, 8, 16, 7, 3, 8, 0, 1, 14, 15, 15, 4, 6, 14, 13, 5, 12, 8, 0, 15, 12, 7, 1, 14, 3, 1, 8, 4, 12, 16, 10, 1, 0, 1, 10, 14, 11, 11, 16, 3, 0, 9, 2, 9, 16, 6, 12, 9, 13, 1, 8, 11, 12, 14, 2, 14, 11, 4, 1, 9, 5, 12, 0, 11, 3, 3, 7, 2, 4, 8, 14, 14, 8, 7, 15, 3, 4, 12, 1, 11, 3, 8, 10, 10, 16, 4, 1, 15, 8, 1, 8, 2, 2, 5, 11, 8, 13, 6, 9, 10, 4, 3, 8, 4, 9, 10, 13, 15, 16, 10, 0, 9, 4, 5, 9, 17, 17, 17, 9, 17, 10, 11, 7, 0, 13, 2, 17, 1, 2, 1, 14, 17, 17, 7, 16, 14, 17, 6, 0, 3, 17, 7, 3, 17, 14, 14, 17, 17, 8, 10, 15, 17, 9, 2, 11, 12, 3, 14, 15, 14, 5, 17, 14, 8, 10, 5, 15, 5, 17, 7, 14, 5, 15, 12, 7, 17, 13, 17, 17, 12, 17, 17, 17, 14, 9, 17, 2, 8, 12, 6, 17, 0, 17, 17, 17, 17, 17, 12, 14, 16, 7, 17, 1, 1, 17, 17, 17, 17, 17, 17, 17, 9, 17, 17, 17, 2, 17, 9, 4, 15, 12, 4, 17, 10, 15, 3, 12, 11, 7, 17, 17, 3, 17, 17, 17, 15, 8, 11, 10, 15, 4, 17, 17, 1, 8, 17, 17, 4, 17, 2, 10, 16, 8, 7, 13, 7, 14, 17, 17, 4, 17, 15, 17, 9, 2, 17, 5, 13, 17, 17, 12, 14, 6, 17, 3, 17, 9, 14, 6, 17, 17, 17, 15, 16, 17, 17, 15, 17, 3, 17, 4, 2, 2, 13, 4, 8, 2, 17, 4, 17, 4, 17, 17, 17, 17, 2, 3, 14, 12, 17, 12, 12, 14, 17, 13, 1, 15, 17, 2, 6, 12, 17, 17, 12, 14, 17, 17, 5, 17, 16, 17, 17, 17, 3, 3, 17, 17, 7, 17, 9, 9, 2, 10, 0, 1, 17, 16, 0, 17, 2, 17, 8, 17, 17, 15, 4, 8, 17, 14, 17, 3, 17, 0, 5, 11, 7, 17, 17, 17, 17, 14, 17, 14, 3, 12, 9, 6, 17, 7, 1, 0, 1, 17, 12, 17, 17, 17, 16, 16, 15, 17, 17, 17, 13, 17, 17, 17, 17, 17, 2, 15, 9, 5, 17, 17, 17, 17, 1, 17, 17, 12, 16, 1, 10, 2, 12, 2, 2, 17, 17, 17, 10, 11, 6, 17, 10, 14, 1, 17, 11, 17, 4, 5, 17, 2, 17, 16, 17, 17, 10, 4, 17, 17, 17, 17, 17, 17, 17, 0, 3, 15, 3, 14, 7, 4, 2, 17, 5, 17, 8, 15, 17, 5, 17, 17, 17, 16, 17, 15, 15, 17, 17, 17, 17, 15, 13, 8, 15, 16, 17, 7, 17, 11, 8, 5, 3, 17, 14, 3, 12, 9, 14, 10, 0, 17, 16, 17, 0, 9, 5, 17, 12, 0, 3, 13, 4, 12, 10, 7], [0, 1, 2, 3, 4, 5, 0, 6, 3, 0, 7, 8, 4, 5, 9, 2, 10, 11, 9, 1, 7, 12, 3, 13, 9, 4, 13, 13, 14, 11, 3, 2, 14, 5, 8, 14, 3, 15, 2, 13, 10, 7, 15, 1, 8, 5, 8, 12, 3, 0, 8, 9, 15, 14, 11, 12, 8, 10, 6, 8, 12, 4, 14, 6, 9, 1, 12, 2, 13, 8, 4, 6, 4, 11, 5, 9, 11, 2, 6, 3, 5, 10, 7, 10, 12, 7, 11, 14, 0, 6, 3, 9, 8, 9, 0, 5, 5, 7, 11, 13, 2, 15, 15, 1, 3, 12, 7, 14, 1, 0, 10, 0, 10, 5, 6, 0, 9, 14, 15, 0, 9, 1, 14, 12, 11, 8, 12, 8, 3, 15, 2, 4, 15, 10, 9, 4, 5, 6, 1, 4, 12, 12, 12, 13, 14, 6, 0, 0, 5, 12, 9, 5, 7, 6, 15, 7, 14, 2, 4, 3, 13, 13, 4, 1, 5, 0, 14, 12, 0, 1, 13, 5, 15, 7, 4, 1, 11, 10, 15, 6, 1, 10, 13, 14, 14, 11, 3, 6, 10, 9, 8, 11, 3, 12, 10, 13, 1, 7, 14, 1, 7, 2, 13, 11, 4, 1, 8, 4, 12, 6, 11, 3, 5, 9, 9, 4, 5, 7, 7, 5, 0, 2, 5, 15, 12, 15, 11, 5, 5, 10, 10, 11, 4, 15, 14, 7, 1, 7, 2, 2, 6, 11, 7, 13, 3, 8, 10, 15, 5, 5, 15, 10, 10, 13, 2, 12, 8, 6, 8, 4, 4, 8, 16, 16, 16, 10, 16, 8, 11, 9, 6, 13, 2, 16, 1, 9, 15, 13, 16, 16, 0, 12, 13, 16, 3, 0, 5, 16, 9, 5, 16, 7, 13, 16, 16, 5, 10, 14, 16, 10, 2, 14, 1, 3, 7, 2, 7, 4, 16, 7, 7, 10, 6, 2, 6, 16, 9, 13, 6, 14, 1, 9, 16, 13, 16, 16, 1, 16, 16, 16, 13, 8, 16, 9, 7, 12, 3, 16, 0, 16, 16, 16, 16, 16, 12, 7, 11, 0, 16, 1, 15, 16, 16, 16, 16, 16, 16, 16, 8, 16, 16, 16, 9, 16, 10, 15, 14, 12, 4, 16, 10, 2, 3, 12, 11, 9, 16, 16, 5, 16, 16, 16, 14, 5, 14, 8, 14, 15, 16, 16, 15, 7, 16, 16, 4, 16, 2, 8, 12, 7, 9, 13, 9, 7, 16, 16, 15, 16, 14, 16, 8, 9, 16, 4, 13, 16, 16, 12, 13, 3, 16, 5, 16, 10, 13, 3, 16, 16, 16, 14, 12, 16, 16, 14, 16, 5, 16, 4, 9, 2, 13, 4, 5, 9, 16, 15, 16, 15, 16, 16, 16, 16, 9, 3, 7, 12, 16, 1, 1, 13, 16, 13, 15, 2, 16, 2, 3, 12, 16, 16, 1, 13, 16, 16, 4, 16, 11, 16, 16, 16, 5, 3, 16, 16, 0, 16, 10, 8, 9, 10, 6, 1, 16, 11, 6, 16, 9, 16, 5, 16, 16, 14, 4, 7, 16, 13, 16, 3, 16, 0, 4, 11, 9, 16, 16, 16, 16, 7, 16, 7, 5, 1, 10, 3, 16, 9, 15, 0, 1, 16, 1, 16, 16, 16, 11, 11, 14, 16, 16, 16, 13, 16, 16, 16, 16, 16, 2, 2, 8, 6, 16, 16, 16, 16, 1, 16, 16, 12, 12, 1, 10, 9, 1, 2, 9, 16, 16, 16, 8, 14, 3, 16, 10, 13, 15, 16, 11, 16, 4, 6, 16, 9, 16, 11, 16, 16, 8, 15, 16, 16, 16, 16, 16, 16, 16, 0, 5, 14, 3, 13, 0, 15, 2, 16, 4, 16, 5, 14, 16, 4, 16, 16, 16, 12, 16, 14, 2, 16, 16, 16, 16, 2, 13, 5, 14, 11, 16, 0, 16, 11, 5, 6, 3, 16, 13, 3, 1, 8, 13, 8, 6, 16, 11, 16, 6, 10, 4, 16, 12, 6, 3, 13, 15, 1, 10, 0], [0, 1, 2, 3, 3, 4, 0, 2, 5, 6, 7, 8, 9, 10, 4, 2, 10, 11, 12, 1, 7, 9, 5, 13, 4, 9, 12, 13, 13, 11, 3, 2, 1, 10, 8, 13, 5, 0, 14, 12, 15, 8, 0, 6, 15, 4, 15, 9, 3, 0, 15, 12, 11, 1, 11, 5, 8, 15, 7, 15, 5, 3, 13, 2, 12, 6, 5, 2, 13, 15, 9, 7, 9, 14, 10, 12, 14, 14, 2, 5, 10, 15, 8, 15, 5, 8, 14, 1, 6, 2, 3, 4, 15, 4, 0, 4, 4, 8, 14, 13, 14, 0, 11, 1, 3, 5, 8, 1, 6, 0, 15, 6, 15, 4, 7, 6, 12, 1, 11, 6, 4, 6, 13, 9, 11, 8, 5, 8, 5, 0, 14, 3, 0, 10, 12, 9, 10, 7, 6, 3, 5, 9, 9, 12, 1, 2, 6, 0, 10, 5, 12, 4, 7, 7, 11, 8, 13, 14, 3, 5, 12, 13, 9, 6, 10, 0, 13, 9, 6, 1, 12, 4, 11, 7, 3, 6, 14, 10, 11, 7, 1, 10, 12, 1, 1, 14, 3, 7, 15, 4, 8, 14, 5, 9, 15, 13, 1, 7, 1, 6, 8, 2, 12, 11, 3, 1, 8, 9, 9, 7, 11, 3, 4, 12, 4, 3, 10, 8, 8, 10, 6, 14, 4, 0, 9, 11, 11, 4, 10, 10, 10, 14, 3, 11, 13, 7, 1, 7, 2, 2, 2, 11, 7, 13, 5, 8, 10, 0, 4, 10, 0, 15, 10, 13, 14, 5, 15, 7, 8, 3, 9, 8, 16, 16, 16, 15, 16, 15, 11, 12, 7, 13, 2, 16, 1, 4, 11, 12, 16, 16, 6, 5, 12, 16, 5, 0, 4, 16, 12, 4, 16, 8, 12, 16, 16, 10, 10, 13, 16, 15, 2, 1, 6, 3, 8, 14, 8, 9, 16, 8, 7, 10, 2, 14, 2, 16, 12, 12, 2, 13, 6, 12, 16, 13, 16, 16, 6, 16, 16, 16, 12, 8, 16, 4, 7, 9, 5, 16, 0, 16, 16, 16, 16, 16, 9, 8, 14, 6, 16, 1, 11, 16, 16, 16, 16, 16, 16, 16, 8, 16, 16, 16, 4, 16, 15, 0, 13, 9, 3, 16, 10, 14, 3, 9, 11, 12, 16, 16, 4, 16, 16, 16, 13, 10, 1, 15, 13, 0, 16, 16, 11, 7, 16, 16, 3, 16, 2, 15, 5, 7, 12, 13, 12, 8, 16, 16, 0, 16, 13, 16, 8, 4, 16, 9, 13, 16, 16, 9, 12, 5, 16, 4, 16, 15, 12, 5, 16, 16, 16, 13, 5, 16, 16, 13, 16, 4, 16, 3, 4, 2, 13, 3, 10, 4, 16, 0, 16, 0, 16, 16, 16, 16, 4, 3, 8, 9, 16, 6, 6, 12, 16, 13, 11, 14, 16, 2, 5, 9, 16, 16, 6, 12, 16, 16, 9, 16, 14, 16, 16, 16, 4, 3, 16, 16, 6, 16, 15, 8, 4, 10, 7, 1, 16, 14, 7, 16, 4, 16, 10, 16, 16, 13, 3, 7, 16, 12, 16, 3, 16, 0, 9, 11, 12, 16, 16, 16, 16, 8, 16, 8, 4, 6, 15, 5, 16, 12, 11, 0, 1, 16, 6, 16, 16, 16, 14, 14, 13, 16, 16, 16, 13, 16, 16, 16, 16, 16, 2, 14, 8, 2, 16, 16, 16, 16, 1, 16, 16, 9, 5, 1, 10, 4, 6, 2, 4, 16, 16, 16, 15, 1, 5, 16, 10, 12, 11, 16, 11, 16, 3, 2, 16, 4, 16, 14, 16, 16, 15, 0, 16, 16, 16, 16, 16, 16, 16, 0, 4, 13, 3, 12, 6, 0, 2, 16, 9, 16, 10, 13, 16, 9, 16, 16, 16, 5, 16, 13, 14, 16, 16, 16, 16, 14, 13, 10, 13, 14, 16, 6, 16, 11, 10, 2, 3, 16, 12, 3, 6, 8, 12, 15, 7, 16, 14, 16, 7, 15, 9, 16, 9, 7, 3, 13, 0, 6, 10, 6], [0, 1, 2, 3, 4, 5, 0, 6, 7, 8, 9, 10, 5, 11, 11, 2, 10, 2, 12, 1, 9, 13, 7, 9, 11, 5, 8, 9, 1, 2, 3, 2, 3, 11, 10, 1, 7, 7, 4, 8, 13, 12, 7, 14, 0, 5, 0, 13, 3, 0, 0, 12, 6, 3, 2, 14, 10, 13, 15, 0, 14, 4, 1, 6, 12, 14, 14, 2, 9, 0, 5, 15, 5, 15, 11, 12, 15, 4, 6, 7, 11, 13, 12, 13, 14, 12, 15, 3, 8, 6, 3, 11, 0, 11, 0, 5, 5, 12, 15, 9, 4, 7, 6, 1, 3, 14, 12, 3, 14, 0, 13, 8, 13, 5, 15, 8, 12, 3, 6, 8, 11, 14, 1, 13, 2, 10, 14, 10, 7, 7, 4, 4, 7, 10, 12, 5, 11, 15, 14, 4, 14, 13, 13, 8, 3, 6, 8, 0, 11, 14, 12, 5, 9, 15, 6, 12, 1, 4, 4, 7, 8, 9, 5, 14, 11, 0, 1, 13, 8, 1, 8, 5, 6, 9, 4, 14, 15, 10, 6, 15, 1, 10, 8, 3, 3, 15, 3, 15, 13, 11, 10, 15, 7, 13, 13, 9, 1, 9, 3, 14, 12, 2, 8, 2, 4, 1, 10, 5, 13, 15, 2, 3, 5, 12, 11, 4, 11, 12, 12, 11, 8, 4, 5, 7, 13, 6, 2, 5, 11, 10, 10, 15, 4, 6, 1, 9, 1, 9, 2, 2, 6, 2, 9, 9, 7, 10, 10, 7, 5, 11, 7, 13, 10, 9, 4, 14, 0, 15, 10, 4, 5, 10, 16, 16, 16, 13, 16, 0, 2, 12, 15, 9, 2, 16, 1, 11, 6, 8, 16, 16, 8, 14, 8, 16, 7, 0, 5, 16, 12, 5, 16, 12, 8, 16, 16, 11, 10, 1, 16, 13, 2, 3, 14, 3, 12, 4, 12, 5, 16, 12, 9, 10, 6, 4, 6, 16, 12, 8, 6, 1, 14, 12, 16, 9, 16, 16, 14, 16, 16, 16, 8, 10, 16, 11, 9, 13, 7, 16, 0, 16, 16, 16, 16, 16, 13, 12, 15, 8, 16, 1, 6, 16, 16, 16, 16, 16, 16, 16, 10, 16, 16, 16, 11, 16, 13, 7, 1, 13, 4, 16, 10, 4, 3, 13, 2, 12, 16, 16, 5, 16, 16, 16, 1, 11, 3, 0, 1, 7, 16, 16, 6, 9, 16, 16, 4, 16, 2, 0, 14, 9, 12, 9, 12, 12, 16, 16, 7, 16, 1, 16, 10, 11, 16, 5, 9, 16, 16, 13, 8, 7, 16, 5, 16, 13, 8, 7, 16, 16, 16, 1, 14, 16, 16, 1, 16, 5, 16, 4, 11, 2, 9, 4, 11, 11, 16, 7, 16, 7, 16, 16, 16, 16, 11, 3, 12, 13, 16, 14, 14, 8, 16, 9, 6, 4, 16, 2, 7, 13, 16, 16, 14, 8, 16, 16, 5, 16, 15, 16, 16, 16, 5, 3, 16, 16, 8, 16, 13, 10, 11, 10, 15, 1, 16, 15, 15, 16, 11, 16, 11, 16, 16, 1, 4, 9, 16, 8, 16, 3, 16, 0, 5, 2, 12, 16, 16, 16, 16, 12, 16, 12, 5, 14, 13, 7, 16, 12, 6, 0, 1, 16, 14, 16, 16, 16, 15, 15, 1, 16, 16, 16, 9, 16, 16, 16, 16, 16, 2, 4, 10, 6, 16, 16, 16, 16, 1, 16, 16, 13, 14, 1, 10, 11, 14, 2, 11, 16, 16, 16, 0, 3, 7, 16, 10, 8, 6, 16, 2, 16, 4, 6, 16, 11, 16, 15, 16, 16, 0, 7, 16, 16, 16, 16, 16, 16, 16, 0, 5, 1, 3, 8, 8, 7, 2, 16, 5, 16, 11, 1, 16, 5, 16, 16, 16, 14, 16, 1, 4, 16, 16, 16, 16, 4, 9, 11, 1, 15, 16, 8, 16, 2, 11, 6, 3, 16, 8, 3, 14, 10, 8, 0, 15, 16, 15, 16, 15, 13, 5, 16, 13, 15, 3, 9, 7, 14, 10, 8]], "weekHasPairing": [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], "lTeam": [0.6480740904808044, 0.14250195026397705, 0.6480740904808044, 0.37793993949890137], "lGame": [0.3209361433982849, 0.07056912779808044, 0.3209361433982849, 0.1871616095304489], "lIdio": [0.6906518340110779, 0.9872756004333496, 0.6906518340110779, 0.906714916229248], "cvLn": [0.40394747257232666, 0.5116205811500549, 0.5600696206092834, 0.5789281725883484], "activeP": [0.8299999833106995, 0.875, 0.8600000143051147, 0.8379999995231628], "finalsQuantile": 0.9700149925037481, "weights": {"playoff_team": 1.0, "R3": 3.0, "finals": 150.0, "finals_top": 2800.0}, "nTeams": 12, "nRounds": 18, "caps": {"QB": 3, "RB": 7, "WR": 9, "TE": 3}, "mins": {"QB": 2, "RB": 4, "WR": 5, "TE": 2}, "projScale": {"QB": 0.916, "RB": 0.88, "WR": 0.691, "TE": 0.826}, "sched1517": {"ARI": ["NYJ", "NO", "LV"], "ATL": ["WAS", "TB", "NO"], "BAL": ["PIT", "CLE", "CIN"], "BUF": ["CHI", "DEN", "MIA"], "CAR": ["CIN", "PIT", "SEA"], "CHI": ["BUF", "GB", "DET"], "CIN": ["CAR", "IND", "BAL"], "CLE": ["NYG", "BAL", "IND"], "DAL": ["LA", "JAX", "NYG"], "DEN": ["LV", "BUF", "NE"], "DET": ["MIN", "NYG", "CHI"], "GB": ["MIA", "CHI", "HOU"], "HOU": ["JAX", "PHI", "GB"], "IND": ["TEN", "CIN", "CLE"], "JAX": ["HOU", "DAL", "WAS"], "KC": ["NE", "SF", "LAC"], "LA": ["DAL", "SEA", "TB"], "LAC": ["SF", "MIA", "KC"], "LV": ["DEN", "TEN", "ARI"], "MIA": ["GB", "LAC", "BUF"], "MIN": ["DET", "WAS", "NYJ"], "NE": ["KC", "NYJ", "DEN"], "NO": ["TB", "ARI", "ATL"], "NYG": ["CLE", "DET", "DAL"], "NYJ": ["ARI", "NE", "MIN"], "PHI": ["SEA", "HOU", "SF"], "PIT": ["BAL", "CAR", "TEN"], "SEA": ["PHI", "LA", "CAR"], "SF": ["LAC", "KC", "PHI"], "TB": ["NO", "ATL", "LA"], "TEN": ["IND", "LV", "PIT"], "WAS": ["ATL", "MIN", "JAX"]}, "nUserProj": 179}</script>
+<script id="simcore-src" type="text/plain">// Browser port of the TournamentSim engine. Deterministic parts (mu, autofill, lineup math,
+// equity given fixed draws) verified EXACTLY against Python fixtures; stochastic parts
+// verified statistically (means, correlations, bye zeros). See test_simcore.js.
+const SimCore = (() => {
+  let D = null;                 // resolved data blob
+  let P = 0;                    // player count
+  let posArr, teamArr, adpArr, muArr, byeArr, adpOrder;
+
+  // ---------- seeded RNG: mulberry32 + Box-Muller ----------
+  function makeRng(seed) {
+    let a = seed >>> 0;
+    let spare = null;
+    const uniform = () => {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+    const normal = () => {
+      if (spare !== null) { const s = spare; spare = null; return s; }
+      let u = 0, v = 0;
+      do { u = uniform(); } while (u === 0);
+      v = uniform();
+      const r = Math.sqrt(-2.0 * Math.log(u));
+      spare = r * Math.sin(2 * Math.PI * v);
+      return r * Math.cos(2 * Math.PI * v);
+    };
+    return { uniform, normal };
+  }
+
+  function init(data) {
+    D = data;
+    P = D.players.length;
+    posArr = new Int8Array(P);
+    teamArr = new Int16Array(P);
+    adpArr = new Float64Array(P);
+    muArr = new Float64Array(P);
+    byeArr = new Int8Array(P);
+    for (let i = 0; i < P; i++) {
+      const p = D.players[i];
+      posArr[i] = p.pos; teamArr[i] = p.team; adpArr[i] = p.adp; muArr[i] = p.mu; byeArr[i] = p.bye;
+    }
+    adpOrder = [...Array(P).keys()].sort((x, y) => adpArr[x] - adpArr[y]);
+  }
+
+  // ---------- score generation for a SUBSET of players ----------
+  // Returns {get(s,w,localIdx), S, W, playerList, localOf}
+  function drawScores(playerList, S, seed) {
+    const rng = makeRng(seed);
+    const W = 17;
+    const U = playerList.length;
+    const T = D.nTeamIds;
+    let maxGame = 0;
+    for (let w = 0; w < W; w++) for (let i = 0; i < P; i++) if (D.gameId[w][i] > maxGame) maxGame = D.gameId[w][i];
+    const G = maxGame + 1;
+
+    const zTeam = new Float32Array(S * W * T);
+    for (let i = 0; i < zTeam.length; i++) zTeam[i] = rng.normal();
+    const zGame = new Float32Array(S * W * G);
+    for (let i = 0; i < zGame.length; i++) zGame[i] = rng.normal();
+
+    const scores = new Float32Array(S * W * U);
+    const localOf = new Map();
+    for (let u = 0; u < U; u++) localOf.set(playerList[u], u);
+
+    for (let u = 0; u < U; u++) {
+      const pi = playerList[u];
+      const pos = posArr[pi];
+      const lt = D.lTeam[pos], lg = D.lGame[pos], li = D.lIdio[pos];
+      const liNo = Math.sqrt(li * li + lg * lg);
+      const cvl = D.cvLn[pos];
+      const mu = muArr[pi];
+      const act = D.activeP[pos];
+      const team = teamArr[pi];
+      const bye = byeArr[pi];
+      for (let s = 0; s < S; s++) {
+        const base = (s * W) * U;
+        for (let w = 0; w < W; w++) {
+          const idx = base + w * U + u;
+          if (bye === w + 1) { scores[idx] = 0; rng.normal(); rng.uniform(); continue; }
+          const zi = rng.normal();
+          let z;
+          if (D.weekHasPairing[w]) {
+            const g = D.gameId[w][pi];
+            z = zTeam[(s * W + w) * T + team] * lt + zGame[(s * W + w) * G + g] * lg + zi * li;
+          } else {
+            z = zTeam[(s * W + w) * T + team] * lt + zi * liNo;
+          }
+          const val = mu * Math.exp(cvl * z - 0.5 * cvl * cvl);
+          scores[idx] = rng.uniform() < act ? val : 0;
+        }
+      }
+    }
+    return { scores, S, W, U, playerList, localOf };
+  }
+
+  // ---------- weekly best-ball lineup totals for one roster ----------
+  // returns Float32Array (S*W)
+  function rosterWeekScores(sc, rosterIdx) {
+    const { scores, S, W, U, localOf } = sc;
+    const n = rosterIdx.length;
+    const local = new Int32Array(n);
+    const rpos = new Int8Array(n);
+    for (let i = 0; i < n; i++) {
+      const li = localOf.get(rosterIdx[i]);
+      local[i] = li === undefined ? -1 : li;   // -1 = not in tensor -> scores 0
+      rpos[i] = posArr[rosterIdx[i]];
+    }
+    const out = new Float32Array(S * W);
+    const qb = [], rb = [], wr = [], te = [];
+    for (let i = 0; i < n; i++) {
+      [qb, rb, wr, te][rpos[i]].push(local[i]);
+    }
+    const buf = new Float64Array(18);
+    const topSum = (list, s, w, count, flexOut) => {
+      const m = list.length;
+      if (m === 0) return 0;
+      for (let i = 0; i < m; i++) buf[i] = list[i] < 0 ? 0 : scores[(s * W + w) * U + list[i]];
+      // partial selection sort for top count+1
+      const need = Math.min(m, count + 1);
+      for (let i = 0; i < need; i++) {
+        let mx = i;
+        for (let j = i + 1; j < m; j++) if (buf[j] > buf[mx]) mx = j;
+        const t = buf[i]; buf[i] = buf[mx]; buf[mx] = t;
+      }
+      let s2 = 0;
+      const k = Math.min(count, m);
+      for (let i = 0; i < k; i++) s2 += buf[i];
+      if (flexOut && m > count) flexOut.push(buf[count]);
+      return s2;
+    };
+    for (let s = 0; s < S; s++) {
+      for (let w = 0; w < W; w++) {
+        const flex = [];
+        let tot = topSum(qb, s, w, 1, null);
+        tot += topSum(rb, s, w, 2, flex);
+        tot += topSum(wr, s, w, 3, flex);
+        tot += topSum(te, s, w, 1, flex);
+        if (flex.length) tot += Math.max(...flex);
+        out[s * W + w] = tot;
+      }
+    }
+    return out;
+  }
+
+  // ---------- ADP-softmax bot drafts ----------
+  function makeBotRosters(nBots, seed, topk = 6, temperature = 8.0) {
+    const rng = makeRng(seed);
+    const order = [];
+    for (let rnd = 0; rnd < D.nRounds; rnd++) {
+      const seq = [...Array(nBots).keys()];
+      if (rnd % 2 === 1) seq.reverse();
+      order.push(...seq);
+    }
+    const taken = new Uint8Array(P);
+    const counts = Array.from({ length: nBots }, () => [0, 0, 0, 0]);
+    const capsByPos = [D.caps.QB, D.caps.RB, D.caps.WR, D.caps.TE];
+    const rosters = Array.from({ length: nBots }, () => []);
+    for (const slot of order) {
+      const legal = [];
+      for (const i of adpOrder) {
+        if (!taken[i] && counts[slot][posArr[i]] < capsByPos[posArr[i]]) {
+          legal.push(i);
+          if (legal.length >= topk) break;
+        }
+      }
+      let sum = 0;
+      const ws = legal.map(i => { const v = Math.exp(-adpArr[i] / temperature); sum += v; return v; });
+      let r = rng.uniform() * sum, pick = legal[legal.length - 1];
+      for (let i = 0; i < legal.length; i++) { r -= ws[i]; if (r <= 0) { pick = legal[i]; break; } }
+      taken[pick] = 1;
+      rosters[slot].push(pick);
+      counts[slot][posArr[pick]] += 1;
+    }
+    return rosters;
+  }
+
+  // ---------- opponent field ----------
+  function buildOpponentField(sc, seed) {
+    const bots = makeBotRosters(D.nTeams, seed).slice(0, D.nTeams - 1);
+    return finishOpponentField(sc, bots);
+  }
+  function finishOpponentField(sc, bots) {
+    const { S, W } = sc;
+    const nb = bots.length;
+    const botWeekly = bots.map(r => rosterWeekScores(sc, r));   // array of (S*W)
+    const botR1 = new Float64Array(S * nb);
+    for (let b = 0; b < nb; b++) {
+      const bw = botWeekly[b];
+      for (let s = 0; s < S; s++) {
+        let t = 0;
+        for (let w = 0; w < 14; w++) t += bw[s * W + w];
+        botR1[s * nb + b] = t;
+      }
+    }
+    const pools = { 15: [], 16: [], 17: [] };
+    const idxs = new Array(nb);
+    for (let s = 0; s < S; s++) {
+      for (let b = 0; b < nb; b++) idxs[b] = b;
+      idxs.sort((x, y) => botR1[s * nb + y] - botR1[s * nb + x]);
+      for (const b of [idxs[0], idxs[1]]) {
+        pools[15].push(botWeekly[b][s * W + 14]);
+        pools[16].push(botWeekly[b][s * W + 15]);
+        pools[17].push(botWeekly[b][s * W + 16]);
+      }
+    }
+    return { botWeekly, botR1, nb, pools:
+      { 15: Float64Array.from(pools[15]), 16: Float64Array.from(pools[16]), 17: Float64Array.from(pools[17]) } };
+  }
+
+  // numpy-compatible linear-interpolation quantile
+  function quantile(arr, q) {
+    const a = Float64Array.from(arr).sort();
+    const pos = (a.length - 1) * q;
+    const lo = Math.floor(pos), hi = Math.ceil(pos);
+    if (lo === hi) return a[lo];
+    return a[lo] + (a[hi] - a[lo]) * (pos - lo);
+  }
+
+  // ---------- equity ----------
+  function rosterEquityCounts(sc, rosterIdx, field, uniformsInject) {
+    const { S, W } = sc;
+    const mine = rosterWeekScores(sc, rosterIdx);
+    const { botR1, nb, pools } = field;
+    const myR1 = new Float64Array(S);
+    for (let s = 0; s < S; s++) {
+      let t = 0;
+      for (let w = 0; w < 14; w++) t += mine[s * W + w];
+      myR1[s] = t;
+    }
+    const adv1 = new Uint8Array(S);
+    for (let s = 0; s < S; s++) {
+      let beats = 0;
+      for (let b = 0; b < nb; b++) if (botR1[s * nb + b] > myR1[s]) beats++;
+      adv1[s] = beats < 2 ? 1 : 0;
+    }
+    const rng = makeRng(12345);
+    const uni = uniformsInject || null;   // [round][s][k] for exact-fixture testing
+    const roundAdvance = (weekIdx, alive, pool, roundNo) => {
+      const out = new Uint8Array(S);
+      if (!pool.length) return out;
+      for (let s = 0; s < S; s++) {
+        // consume RNG deterministically regardless of aliveness so CRN holds across candidates
+        let beats = 0;
+        for (let k = 0; k < D.nTeams - 1; k++) {
+          const u = uni ? uni[roundNo][s][k] : rng.uniform();
+          const opp = pool[Math.floor(u * pool.length)];
+          if (opp > mine[s * W + weekIdx]) beats++;
+        }
+        out[s] = alive[s] && beats < 2 ? 1 : 0;
+      }
+      return out;
+    };
+    const adv2 = roundAdvance(14, adv1, pools[15], 0);
+    const adv3 = roundAdvance(15, adv2, pools[16], 1);
+    const thresh = quantile(pools[17], D.finalsQuantile);
+    let c1 = 0, c2 = 0, c3 = 0, cTop = 0;
+    for (let s = 0; s < S; s++) {
+      c1 += adv1[s]; c2 += adv2[s]; c3 += adv3[s];
+      if (adv3[s] && mine[s * W + 16] > thresh) cTop++;
+    }
+    return { c1, c2, c3, cTop, S, thresh };
+  }
+
+  function rosterEquity(sc, rosterIdx, field, uniformsInject) {
+    const { c1, c2, c3, cTop, S, thresh } = rosterEquityCounts(sc, rosterIdx, field, uniformsInject);
+    const pPlayoff = c1 / S, pR3 = c2 / S, pFinals = c3 / S, pTop = cTop / S;
+    const w = D.weights;
+    return {
+      P_playoff: pPlayoff, P_R3: pR3, P_finals: pFinals, P_finals_top: pTop,
+      equity: w.playoff_team * pPlayoff + w.R3 * pR3 + w.finals * pFinals + w.finals_top * pTop,
+      thresh,
+    };
+  }
+
+  // ---------- autofill (exact port) ----------
+  function autofill(myIdx, draftedSet, draftSlot) {
+    const capsByPos = [D.caps.QB, D.caps.RB, D.caps.WR, D.caps.TE];
+    const minsByPos = [D.mins.QB, D.mins.RB, D.mins.WR, D.mins.TE];
+    const counts = [0, 0, 0, 0];
+    for (const i of myIdx) counts[posArr[i]] += 1;
+    const taken = new Uint8Array(P);
+    for (const i of draftedSet) taken[i] = 1;
+    for (const i of myIdx) taken[i] = 1;
+    const roster = [...myIdx];
+
+    const order = [];
+    for (let rnd = 0; rnd < D.nRounds; rnd++) {
+      const seq = [];
+      for (let s = 1; s <= D.nTeams; s++) seq.push(s);
+      if (rnd % 2 === 1) seq.reverse();
+      order.push(...seq);
+    }
+    let startPick = 0;
+    for (let i = 0; i < P; i++) startPick += taken[i];
+    let ptr = 0;
+    for (let pickI = startPick; pickI < D.nTeams * D.nRounds; pickI++) {
+      const slot = order[pickI];
+      while (ptr < P && taken[adpOrder[ptr]]) ptr++;
+      if (slot === draftSlot) {
+        if (roster.length >= D.nRounds) continue;
+        let totalDeficit = 0;
+        const deficits = [0, 0, 0, 0];
+        for (let p = 0; p < 4; p++) {
+          deficits[p] = Math.max(0, minsByPos[p] - counts[p]);
+          totalDeficit += deficits[p];
+        }
+        const restrict = (D.nRounds - roster.length) <= totalDeficit;
+        let chosen = -1;
+        for (let oi = ptr; oi < P; oi++) {
+          const i = adpOrder[oi];
+          if (taken[i]) continue;
+          const p = posArr[i];
+          if (counts[p] >= capsByPos[p]) continue;
+          if (restrict && deficits[p] === 0) continue;
+          chosen = i;
+          break;
+        }
+        if (chosen >= 0) {
+          roster.push(chosen);
+          counts[posArr[chosen]] += 1;
+          taken[chosen] = 1;
+        }
+      } else {
+        if (ptr < P) { taken[adpOrder[ptr]] = 1; ptr++; }
+      }
+    }
+    // pad safety
+    let oi = 0;
+    while (roster.length < D.nRounds && oi < P) {
+      const i = adpOrder[oi++];
+      if (taken[i]) continue;
+      const p = posArr[i];
+      if (counts[p] >= capsByPos[p]) continue;
+      const deficits = [0, 0, 0, 0];
+      let td = 0;
+      for (let q = 0; q < 4; q++) { deficits[q] = Math.max(0, minsByPos[q] - counts[q]); td += deficits[q]; }
+      if (td >= D.nRounds - roster.length && deficits[p] === 0) continue;
+      roster.push(i);
+      counts[p] += 1;
+      taken[i] = 1;
+    }
+    return roster.slice(0, D.nRounds);
+  }
+
+  // ---------- recommend (batched Monte Carlo) ----------
+  // Runs nSims in batches: each batch draws fresh seasons AND a fresh opponent field
+  // (different bot rosters + bot aggressiveness), so equity averages over both scoring
+  // randomness and opponent-field uncertainty. Candidate comparisons stay low-variance
+  // within a batch via common random numbers. onBatch (optional) receives progressive
+  // partial results after every batch for live UI updates.
+  function makeBotRostersRandomized(nBots, seed) {
+    const r = makeRng(seed ^ 0x9E3779B9);
+    const topk = 3 + Math.floor(r.uniform() * 8);            // 3..10
+    const temperature = 4.0 + r.uniform() * 10.0;            // 4..14
+    return makeBotRosters(nBots, seed, topk, temperature);
+  }
+
+  function recommend(myIdx, draftedSet, draftSlot, nSims, topK, seed, onBatch) {
+    const capsByPos = [D.caps.QB, D.caps.RB, D.caps.WR, D.caps.TE];
+    const counts = [0, 0, 0, 0];
+    for (const i of myIdx) counts[posArr[i]] += 1;
+    const cands = [];
+    for (const i of adpOrder) {
+      if (draftedSet.has(i) || myIdx.includes(i)) continue;
+      if (counts[posArr[i]] >= capsByPos[posArr[i]]) continue;
+      cands.push(i);
+      if (cands.length >= topK) break;
+    }
+    const rosters = cands.map(c => autofill([...myIdx, c], draftedSet, draftSlot));
+
+    const nBatches = Math.max(2, Math.ceil(nSims / 2500));
+    const batchSize = Math.ceil(nSims / nBatches);
+    const acc = cands.map(() => ({ c1: 0, c2: 0, c3: 0, cTop: 0, S: 0, eqBatches: [] }));
+
+    const w = D.weights;
+    const assemble = () => {
+      const rows = cands.map((c, k) => {
+        const a = acc[k];
+        const S = a.S || 1;
+        const pP = a.c1 / S, pR = a.c2 / S, pF = a.c3 / S, pT = a.cTop / S;
+        const eq = w.playoff_team * pP + w.R3 * pR + w.finals * pF + w.finals_top * pT;
+        let se = null;
+        if (a.eqBatches.length >= 2) {
+          const m = a.eqBatches.reduce((x, y) => x + y, 0) / a.eqBatches.length;
+          const v = a.eqBatches.reduce((x, y) => x + (y - m) ** 2, 0) / (a.eqBatches.length - 1);
+          // c4 correction: with few batches the sqrt of the sample variance is biased LOW
+          // (badly at n=2, ~20% under). Dividing by c4(n) makes the displayed +/- honest.
+          const C4 = { 2: 0.7979, 3: 0.8862, 4: 0.9213, 5: 0.9400, 6: 0.9515, 7: 0.9594,
+                       8: 0.9650, 9: 0.9693, 10: 0.9727, 11: 0.9754, 12: 0.9776 };
+          const c4 = C4[a.eqBatches.length] || 1.0;
+          se = Math.sqrt(v / a.eqBatches.length) / c4;
+        }
+        return {
+          idx: c, name: D.players[c].name, position: D.positions[posArr[c]],
+          team: D.players[c].teamName, adp: adpArr[c], muSrc: D.players[c].src, mu: muArr[c],
+          P_playoff: pP, P_R3: pR, P_finals: pF, P_finals_top: pT, equity: eq, equitySE: se,
+          simsDone: a.S,
+        };
+      });
+      rows.sort((x, y) => y.equity - x.equity);
+      const best = rows.length ? rows[0].equity : 0;
+      for (const r of rows) r.equityVsBest = r.equity - best;
+      return rows;
+    };
+
+    for (let b = 0; b < nBatches; b++) {
+      const bots = makeBotRostersRandomized(D.nTeams, seed + 1000 + b * 131).slice(0, D.nTeams - 1);
+      const union = new Set();
+      for (const r of rosters) for (const i of r) union.add(i);
+      for (const bt of bots) for (const i of bt) union.add(i);
+      const playerList = [...union];
+      const sc = drawScores(playerList, batchSize, seed + b * 7919);
+      const field = finishOpponentField(sc, bots);
+      for (let k = 0; k < cands.length; k++) {
+        const r = rosterEquityCounts(sc, rosters[k], field, null);
+        const a = acc[k];
+        a.c1 += r.c1; a.c2 += r.c2; a.c3 += r.c3; a.cTop += r.cTop; a.S += r.S;
+        a.eqBatches.push(w.playoff_team * (r.c1 / r.S) + w.R3 * (r.c2 / r.S)
+                         + w.finals * (r.c3 / r.S) + w.finals_top * (r.cTop / r.S));
+      }
+      if (onBatch) onBatch(assemble(), b + 1, nBatches);
+    }
+    return assemble();
+  }
+
+  return { init, makeRng, drawScores, rosterWeekScores, makeBotRosters, makeBotRostersRandomized,
+           buildOpponentField, finishOpponentField, rosterEquity, rosterEquityCounts, autofill, recommend, quantile,
+           _internals: () => ({ posArr, teamArr, adpArr, muArr, byeArr, adpOrder, D }) };
+})();
+
+if (typeof module !== 'undefined') module.exports = SimCore;
+</script>
+<script>// Browser port of the TournamentSim engine. Deterministic parts (mu, autofill, lineup math,
+// equity given fixed draws) verified EXACTLY against Python fixtures; stochastic parts
+// verified statistically (means, correlations, bye zeros). See test_simcore.js.
+const SimCore = (() => {
+  let D = null;                 // resolved data blob
+  let P = 0;                    // player count
+  let posArr, teamArr, adpArr, muArr, byeArr, adpOrder;
+
+  // ---------- seeded RNG: mulberry32 + Box-Muller ----------
+  function makeRng(seed) {
+    let a = seed >>> 0;
+    let spare = null;
+    const uniform = () => {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+    const normal = () => {
+      if (spare !== null) { const s = spare; spare = null; return s; }
+      let u = 0, v = 0;
+      do { u = uniform(); } while (u === 0);
+      v = uniform();
+      const r = Math.sqrt(-2.0 * Math.log(u));
+      spare = r * Math.sin(2 * Math.PI * v);
+      return r * Math.cos(2 * Math.PI * v);
+    };
+    return { uniform, normal };
+  }
+
+  function init(data) {
+    D = data;
+    P = D.players.length;
+    posArr = new Int8Array(P);
+    teamArr = new Int16Array(P);
+    adpArr = new Float64Array(P);
+    muArr = new Float64Array(P);
+    byeArr = new Int8Array(P);
+    for (let i = 0; i < P; i++) {
+      const p = D.players[i];
+      posArr[i] = p.pos; teamArr[i] = p.team; adpArr[i] = p.adp; muArr[i] = p.mu; byeArr[i] = p.bye;
+    }
+    adpOrder = [...Array(P).keys()].sort((x, y) => adpArr[x] - adpArr[y]);
+  }
+
+  // ---------- score generation for a SUBSET of players ----------
+  // Returns {get(s,w,localIdx), S, W, playerList, localOf}
+  function drawScores(playerList, S, seed) {
+    const rng = makeRng(seed);
+    const W = 17;
+    const U = playerList.length;
+    const T = D.nTeamIds;
+    let maxGame = 0;
+    for (let w = 0; w < W; w++) for (let i = 0; i < P; i++) if (D.gameId[w][i] > maxGame) maxGame = D.gameId[w][i];
+    const G = maxGame + 1;
+
+    const zTeam = new Float32Array(S * W * T);
+    for (let i = 0; i < zTeam.length; i++) zTeam[i] = rng.normal();
+    const zGame = new Float32Array(S * W * G);
+    for (let i = 0; i < zGame.length; i++) zGame[i] = rng.normal();
+
+    const scores = new Float32Array(S * W * U);
+    const localOf = new Map();
+    for (let u = 0; u < U; u++) localOf.set(playerList[u], u);
+
+    for (let u = 0; u < U; u++) {
+      const pi = playerList[u];
+      const pos = posArr[pi];
+      const lt = D.lTeam[pos], lg = D.lGame[pos], li = D.lIdio[pos];
+      const liNo = Math.sqrt(li * li + lg * lg);
+      const cvl = D.cvLn[pos];
+      const mu = muArr[pi];
+      const act = D.activeP[pos];
+      const team = teamArr[pi];
+      const bye = byeArr[pi];
+      for (let s = 0; s < S; s++) {
+        const base = (s * W) * U;
+        for (let w = 0; w < W; w++) {
+          const idx = base + w * U + u;
+          if (bye === w + 1) { scores[idx] = 0; rng.normal(); rng.uniform(); continue; }
+          const zi = rng.normal();
+          let z;
+          if (D.weekHasPairing[w]) {
+            const g = D.gameId[w][pi];
+            z = zTeam[(s * W + w) * T + team] * lt + zGame[(s * W + w) * G + g] * lg + zi * li;
+          } else {
+            z = zTeam[(s * W + w) * T + team] * lt + zi * liNo;
+          }
+          const val = mu * Math.exp(cvl * z - 0.5 * cvl * cvl);
+          scores[idx] = rng.uniform() < act ? val : 0;
+        }
+      }
+    }
+    return { scores, S, W, U, playerList, localOf };
+  }
+
+  // ---------- weekly best-ball lineup totals for one roster ----------
+  // returns Float32Array (S*W)
+  function rosterWeekScores(sc, rosterIdx) {
+    const { scores, S, W, U, localOf } = sc;
+    const n = rosterIdx.length;
+    const local = new Int32Array(n);
+    const rpos = new Int8Array(n);
+    for (let i = 0; i < n; i++) {
+      const li = localOf.get(rosterIdx[i]);
+      local[i] = li === undefined ? -1 : li;   // -1 = not in tensor -> scores 0
+      rpos[i] = posArr[rosterIdx[i]];
+    }
+    const out = new Float32Array(S * W);
+    const qb = [], rb = [], wr = [], te = [];
+    for (let i = 0; i < n; i++) {
+      [qb, rb, wr, te][rpos[i]].push(local[i]);
+    }
+    const buf = new Float64Array(18);
+    const topSum = (list, s, w, count, flexOut) => {
+      const m = list.length;
+      if (m === 0) return 0;
+      for (let i = 0; i < m; i++) buf[i] = list[i] < 0 ? 0 : scores[(s * W + w) * U + list[i]];
+      // partial selection sort for top count+1
+      const need = Math.min(m, count + 1);
+      for (let i = 0; i < need; i++) {
+        let mx = i;
+        for (let j = i + 1; j < m; j++) if (buf[j] > buf[mx]) mx = j;
+        const t = buf[i]; buf[i] = buf[mx]; buf[mx] = t;
+      }
+      let s2 = 0;
+      const k = Math.min(count, m);
+      for (let i = 0; i < k; i++) s2 += buf[i];
+      if (flexOut && m > count) flexOut.push(buf[count]);
+      return s2;
+    };
+    for (let s = 0; s < S; s++) {
+      for (let w = 0; w < W; w++) {
+        const flex = [];
+        let tot = topSum(qb, s, w, 1, null);
+        tot += topSum(rb, s, w, 2, flex);
+        tot += topSum(wr, s, w, 3, flex);
+        tot += topSum(te, s, w, 1, flex);
+        if (flex.length) tot += Math.max(...flex);
+        out[s * W + w] = tot;
+      }
+    }
+    return out;
+  }
+
+  // ---------- ADP-softmax bot drafts ----------
+  function makeBotRosters(nBots, seed, topk = 6, temperature = 8.0) {
+    const rng = makeRng(seed);
+    const order = [];
+    for (let rnd = 0; rnd < D.nRounds; rnd++) {
+      const seq = [...Array(nBots).keys()];
+      if (rnd % 2 === 1) seq.reverse();
+      order.push(...seq);
+    }
+    const taken = new Uint8Array(P);
+    const counts = Array.from({ length: nBots }, () => [0, 0, 0, 0]);
+    const capsByPos = [D.caps.QB, D.caps.RB, D.caps.WR, D.caps.TE];
+    const rosters = Array.from({ length: nBots }, () => []);
+    for (const slot of order) {
+      const legal = [];
+      for (const i of adpOrder) {
+        if (!taken[i] && counts[slot][posArr[i]] < capsByPos[posArr[i]]) {
+          legal.push(i);
+          if (legal.length >= topk) break;
+        }
+      }
+      let sum = 0;
+      const ws = legal.map(i => { const v = Math.exp(-adpArr[i] / temperature); sum += v; return v; });
+      let r = rng.uniform() * sum, pick = legal[legal.length - 1];
+      for (let i = 0; i < legal.length; i++) { r -= ws[i]; if (r <= 0) { pick = legal[i]; break; } }
+      taken[pick] = 1;
+      rosters[slot].push(pick);
+      counts[slot][posArr[pick]] += 1;
+    }
+    return rosters;
+  }
+
+  // ---------- opponent field ----------
+  function buildOpponentField(sc, seed) {
+    const bots = makeBotRosters(D.nTeams, seed).slice(0, D.nTeams - 1);
+    return finishOpponentField(sc, bots);
+  }
+  function finishOpponentField(sc, bots) {
+    const { S, W } = sc;
+    const nb = bots.length;
+    const botWeekly = bots.map(r => rosterWeekScores(sc, r));   // array of (S*W)
+    const botR1 = new Float64Array(S * nb);
+    for (let b = 0; b < nb; b++) {
+      const bw = botWeekly[b];
+      for (let s = 0; s < S; s++) {
+        let t = 0;
+        for (let w = 0; w < 14; w++) t += bw[s * W + w];
+        botR1[s * nb + b] = t;
+      }
+    }
+    const pools = { 15: [], 16: [], 17: [] };
+    const idxs = new Array(nb);
+    for (let s = 0; s < S; s++) {
+      for (let b = 0; b < nb; b++) idxs[b] = b;
+      idxs.sort((x, y) => botR1[s * nb + y] - botR1[s * nb + x]);
+      for (const b of [idxs[0], idxs[1]]) {
+        pools[15].push(botWeekly[b][s * W + 14]);
+        pools[16].push(botWeekly[b][s * W + 15]);
+        pools[17].push(botWeekly[b][s * W + 16]);
+      }
+    }
+    return { botWeekly, botR1, nb, pools:
+      { 15: Float64Array.from(pools[15]), 16: Float64Array.from(pools[16]), 17: Float64Array.from(pools[17]) } };
+  }
+
+  // numpy-compatible linear-interpolation quantile
+  function quantile(arr, q) {
+    const a = Float64Array.from(arr).sort();
+    const pos = (a.length - 1) * q;
+    const lo = Math.floor(pos), hi = Math.ceil(pos);
+    if (lo === hi) return a[lo];
+    return a[lo] + (a[hi] - a[lo]) * (pos - lo);
+  }
+
+  // ---------- equity ----------
+  function rosterEquityCounts(sc, rosterIdx, field, uniformsInject) {
+    const { S, W } = sc;
+    const mine = rosterWeekScores(sc, rosterIdx);
+    const { botR1, nb, pools } = field;
+    const myR1 = new Float64Array(S);
+    for (let s = 0; s < S; s++) {
+      let t = 0;
+      for (let w = 0; w < 14; w++) t += mine[s * W + w];
+      myR1[s] = t;
+    }
+    const adv1 = new Uint8Array(S);
+    for (let s = 0; s < S; s++) {
+      let beats = 0;
+      for (let b = 0; b < nb; b++) if (botR1[s * nb + b] > myR1[s]) beats++;
+      adv1[s] = beats < 2 ? 1 : 0;
+    }
+    const rng = makeRng(12345);
+    const uni = uniformsInject || null;   // [round][s][k] for exact-fixture testing
+    const roundAdvance = (weekIdx, alive, pool, roundNo) => {
+      const out = new Uint8Array(S);
+      if (!pool.length) return out;
+      for (let s = 0; s < S; s++) {
+        // consume RNG deterministically regardless of aliveness so CRN holds across candidates
+        let beats = 0;
+        for (let k = 0; k < D.nTeams - 1; k++) {
+          const u = uni ? uni[roundNo][s][k] : rng.uniform();
+          const opp = pool[Math.floor(u * pool.length)];
+          if (opp > mine[s * W + weekIdx]) beats++;
+        }
+        out[s] = alive[s] && beats < 2 ? 1 : 0;
+      }
+      return out;
+    };
+    const adv2 = roundAdvance(14, adv1, pools[15], 0);
+    const adv3 = roundAdvance(15, adv2, pools[16], 1);
+    const thresh = quantile(pools[17], D.finalsQuantile);
+    let c1 = 0, c2 = 0, c3 = 0, cTop = 0;
+    for (let s = 0; s < S; s++) {
+      c1 += adv1[s]; c2 += adv2[s]; c3 += adv3[s];
+      if (adv3[s] && mine[s * W + 16] > thresh) cTop++;
+    }
+    return { c1, c2, c3, cTop, S, thresh };
+  }
+
+  function rosterEquity(sc, rosterIdx, field, uniformsInject) {
+    const { c1, c2, c3, cTop, S, thresh } = rosterEquityCounts(sc, rosterIdx, field, uniformsInject);
+    const pPlayoff = c1 / S, pR3 = c2 / S, pFinals = c3 / S, pTop = cTop / S;
+    const w = D.weights;
+    return {
+      P_playoff: pPlayoff, P_R3: pR3, P_finals: pFinals, P_finals_top: pTop,
+      equity: w.playoff_team * pPlayoff + w.R3 * pR3 + w.finals * pFinals + w.finals_top * pTop,
+      thresh,
+    };
+  }
+
+  // ---------- autofill (exact port) ----------
+  function autofill(myIdx, draftedSet, draftSlot) {
+    const capsByPos = [D.caps.QB, D.caps.RB, D.caps.WR, D.caps.TE];
+    const minsByPos = [D.mins.QB, D.mins.RB, D.mins.WR, D.mins.TE];
+    const counts = [0, 0, 0, 0];
+    for (const i of myIdx) counts[posArr[i]] += 1;
+    const taken = new Uint8Array(P);
+    for (const i of draftedSet) taken[i] = 1;
+    for (const i of myIdx) taken[i] = 1;
+    const roster = [...myIdx];
+
+    const order = [];
+    for (let rnd = 0; rnd < D.nRounds; rnd++) {
+      const seq = [];
+      for (let s = 1; s <= D.nTeams; s++) seq.push(s);
+      if (rnd % 2 === 1) seq.reverse();
+      order.push(...seq);
+    }
+    let startPick = 0;
+    for (let i = 0; i < P; i++) startPick += taken[i];
+    let ptr = 0;
+    for (let pickI = startPick; pickI < D.nTeams * D.nRounds; pickI++) {
+      const slot = order[pickI];
+      while (ptr < P && taken[adpOrder[ptr]]) ptr++;
+      if (slot === draftSlot) {
+        if (roster.length >= D.nRounds) continue;
+        let totalDeficit = 0;
+        const deficits = [0, 0, 0, 0];
+        for (let p = 0; p < 4; p++) {
+          deficits[p] = Math.max(0, minsByPos[p] - counts[p]);
+          totalDeficit += deficits[p];
+        }
+        const restrict = (D.nRounds - roster.length) <= totalDeficit;
+        let chosen = -1;
+        for (let oi = ptr; oi < P; oi++) {
+          const i = adpOrder[oi];
+          if (taken[i]) continue;
+          const p = posArr[i];
+          if (counts[p] >= capsByPos[p]) continue;
+          if (restrict && deficits[p] === 0) continue;
+          chosen = i;
+          break;
+        }
+        if (chosen >= 0) {
+          roster.push(chosen);
+          counts[posArr[chosen]] += 1;
+          taken[chosen] = 1;
+        }
+      } else {
+        if (ptr < P) { taken[adpOrder[ptr]] = 1; ptr++; }
+      }
+    }
+    // pad safety
+    let oi = 0;
+    while (roster.length < D.nRounds && oi < P) {
+      const i = adpOrder[oi++];
+      if (taken[i]) continue;
+      const p = posArr[i];
+      if (counts[p] >= capsByPos[p]) continue;
+      const deficits = [0, 0, 0, 0];
+      let td = 0;
+      for (let q = 0; q < 4; q++) { deficits[q] = Math.max(0, minsByPos[q] - counts[q]); td += deficits[q]; }
+      if (td >= D.nRounds - roster.length && deficits[p] === 0) continue;
+      roster.push(i);
+      counts[p] += 1;
+      taken[i] = 1;
+    }
+    return roster.slice(0, D.nRounds);
+  }
+
+  // ---------- recommend (batched Monte Carlo) ----------
+  // Runs nSims in batches: each batch draws fresh seasons AND a fresh opponent field
+  // (different bot rosters + bot aggressiveness), so equity averages over both scoring
+  // randomness and opponent-field uncertainty. Candidate comparisons stay low-variance
+  // within a batch via common random numbers. onBatch (optional) receives progressive
+  // partial results after every batch for live UI updates.
+  function makeBotRostersRandomized(nBots, seed) {
+    const r = makeRng(seed ^ 0x9E3779B9);
+    const topk = 3 + Math.floor(r.uniform() * 8);            // 3..10
+    const temperature = 4.0 + r.uniform() * 10.0;            // 4..14
+    return makeBotRosters(nBots, seed, topk, temperature);
+  }
+
+  function recommend(myIdx, draftedSet, draftSlot, nSims, topK, seed, onBatch) {
+    const capsByPos = [D.caps.QB, D.caps.RB, D.caps.WR, D.caps.TE];
+    const counts = [0, 0, 0, 0];
+    for (const i of myIdx) counts[posArr[i]] += 1;
+    const cands = [];
+    for (const i of adpOrder) {
+      if (draftedSet.has(i) || myIdx.includes(i)) continue;
+      if (counts[posArr[i]] >= capsByPos[posArr[i]]) continue;
+      cands.push(i);
+      if (cands.length >= topK) break;
+    }
+    const rosters = cands.map(c => autofill([...myIdx, c], draftedSet, draftSlot));
+
+    const nBatches = Math.max(2, Math.ceil(nSims / 2500));
+    const batchSize = Math.ceil(nSims / nBatches);
+    const acc = cands.map(() => ({ c1: 0, c2: 0, c3: 0, cTop: 0, S: 0, eqBatches: [] }));
+
+    const w = D.weights;
+    const assemble = () => {
+      const rows = cands.map((c, k) => {
+        const a = acc[k];
+        const S = a.S || 1;
+        const pP = a.c1 / S, pR = a.c2 / S, pF = a.c3 / S, pT = a.cTop / S;
+        const eq = w.playoff_team * pP + w.R3 * pR + w.finals * pF + w.finals_top * pT;
+        let se = null;
+        if (a.eqBatches.length >= 2) {
+          const m = a.eqBatches.reduce((x, y) => x + y, 0) / a.eqBatches.length;
+          const v = a.eqBatches.reduce((x, y) => x + (y - m) ** 2, 0) / (a.eqBatches.length - 1);
+          // c4 correction: with few batches the sqrt of the sample variance is biased LOW
+          // (badly at n=2, ~20% under). Dividing by c4(n) makes the displayed +/- honest.
+          const C4 = { 2: 0.7979, 3: 0.8862, 4: 0.9213, 5: 0.9400, 6: 0.9515, 7: 0.9594,
+                       8: 0.9650, 9: 0.9693, 10: 0.9727, 11: 0.9754, 12: 0.9776 };
+          const c4 = C4[a.eqBatches.length] || 1.0;
+          se = Math.sqrt(v / a.eqBatches.length) / c4;
+        }
+        return {
+          idx: c, name: D.players[c].name, position: D.positions[posArr[c]],
+          team: D.players[c].teamName, adp: adpArr[c], muSrc: D.players[c].src, mu: muArr[c],
+          P_playoff: pP, P_R3: pR, P_finals: pF, P_finals_top: pT, equity: eq, equitySE: se,
+          simsDone: a.S,
+        };
+      });
+      rows.sort((x, y) => y.equity - x.equity);
+      const best = rows.length ? rows[0].equity : 0;
+      for (const r of rows) r.equityVsBest = r.equity - best;
+      return rows;
+    };
+
+    for (let b = 0; b < nBatches; b++) {
+      const bots = makeBotRostersRandomized(D.nTeams, seed + 1000 + b * 131).slice(0, D.nTeams - 1);
+      const union = new Set();
+      for (const r of rosters) for (const i of r) union.add(i);
+      for (const bt of bots) for (const i of bt) union.add(i);
+      const playerList = [...union];
+      const sc = drawScores(playerList, batchSize, seed + b * 7919);
+      const field = finishOpponentField(sc, bots);
+      for (let k = 0; k < cands.length; k++) {
+        const r = rosterEquityCounts(sc, rosters[k], field, null);
+        const a = acc[k];
+        a.c1 += r.c1; a.c2 += r.c2; a.c3 += r.c3; a.cTop += r.cTop; a.S += r.S;
+        a.eqBatches.push(w.playoff_team * (r.c1 / r.S) + w.R3 * (r.c2 / r.S)
+                         + w.finals * (r.c3 / r.S) + w.finals_top * (r.cTop / r.S));
+      }
+      if (onBatch) onBatch(assemble(), b + 1, nBatches);
+    }
+    return assemble();
+  }
+
+  return { init, makeRng, drawScores, rosterWeekScores, makeBotRosters, makeBotRostersRandomized,
+           buildOpponentField, finishOpponentField, rosterEquity, rosterEquityCounts, autofill, recommend, quantile,
+           _internals: () => ({ posArr, teamArr, adpArr, muArr, byeArr, adpOrder, D }) };
+})();
+
+if (typeof module !== 'undefined') module.exports = SimCore;
+</script>
+<script>// Pure draft-state logic, kept UI-free so it can be tested in node.
+const AppState = (() => {
+  function newState(draftSlot, nTeams, nRounds) {
+    return {
+      draftSlot, nTeams, nRounds,
+      picks: [],            // [{player_name, byMe}] in draft order as logged
+    };
+  }
+
+  function totalPicksMade(state) { return state.picks.length; }
+
+  function myPickCount(state) { return state.picks.filter(p => p.byMe).length; }
+
+  function draftedNames(state) { return new Set(state.picks.map(p => p.player_name)); }
+
+  // Which slot is on the clock for overall pick number `pickNum` (1-indexed)
+  function slotOnClock(pickNum, nTeams) {
+    const rnd = Math.ceil(pickNum / nTeams);
+    const idx = (pickNum - 1) % nTeams;  // 0-based within round
+    return rnd % 2 === 1 ? idx + 1 : nTeams - idx;
+  }
+
+  function currentPickNum(state) { return totalPicksMade(state) + 1; }
+
+  function isMyTurn(state) {
+    return slotOnClock(currentPickNum(state), state.nTeams) === state.draftSlot
+      && myPickCount(state) < state.nRounds;
+  }
+
+  // My next pick's overall number given how many I've made (mirrors Core.currentOverallPick)
+  function myNextPickNum(state) {
+    const n = state.nTeams, made = myPickCount(state);
+    const rnd = made + 1;
+    const sir = rnd % 2 === 1 ? state.draftSlot : n - state.draftSlot + 1;
+    return (rnd - 1) * n + sir;
+  }
+
+  function roundDotPick(pickNum, nTeams) {
+    const rnd = Math.ceil(pickNum / nTeams);
+    const within = ((pickNum - 1) % nTeams) + 1;
+    return `${rnd}.${String(within).padStart(2, '0')}`;
+  }
+
+  function applyPick(state, playerName, byMe) {
+    if (draftedNames(state).has(playerName)) return { ok: false, reason: 'already drafted' };
+    return { ok: true, state: { ...state, picks: [...state.picks, { player_name: playerName, byMe }] } };
+  }
+
+  function undoLast(state) {
+    if (!state.picks.length) return state;
+    return { ...state, picks: state.picks.slice(0, -1) };
+  }
+
+  function removePick(state, index) {
+    if (index < 0 || index >= state.picks.length) return state;
+    return { ...state, picks: state.picks.filter((_, i) => i !== index) };
+  }
+
+  // Build my roster rows (with dynamic pick_adp_value at the pick each was taken)
+  // valueCurveFn injected from Core so the math stays in one place.
+  function myRosterRows(state, boardByName, valueCurveFn) {
+    const rows = [];
+    let myIdx = 0;
+    for (const p of state.picks) {
+      if (!p.byMe) continue;
+      const b = boardByName[p.player_name];
+      if (!b) { myIdx++; continue; }
+      const n = state.nTeams, rnd = myIdx + 1;
+      const sir = rnd % 2 === 1 ? state.draftSlot : n - state.draftSlot + 1;
+      const pickNum = (rnd - 1) * n + sir;
+      rows.push({
+        player_name: b.player_name, position_name: b.position_name, team: b.team,
+        adp: b['Final ADP'], bye: b.bye,
+        pick_adp_value: valueCurveFn(b['Final ADP']) - valueCurveFn(pickNum),
+        pickNum,
+      });
+      myIdx++;
+    }
+    return rows;
+  }
+
+  function serialize(state) { return JSON.stringify(state); }
+  function deserialize(json) {
+    const s = JSON.parse(json);
+    if (!s || !Array.isArray(s.picks) || !s.draftSlot) throw new Error('bad state file');
+    return s;
+  }
+
+  return { newState, totalPicksMade, myPickCount, draftedNames, slotOnClock, currentPickNum,
+           isMyTurn, myNextPickNum, roundDotPick, applyPick, undoLast, removePick,
+           myRosterRows, serialize, deserialize };
+})();
+
+if (typeof module !== 'undefined') module.exports = AppState;
+</script>
+<script>// UI layer for the simulation-powered draft room. Draft-flow logic lives in AppState
+// (tested), simulation in SimCore (verified vs Python fixtures).
+(() => {
+  const $ = sel => document.querySelector(sel);
+  const POS_ORDER = ['QB', 'RB', 'WR', 'TE'];
+
+  const D = JSON.parse($('#sim-data').textContent);
+  SimCore.init(D);
+
+  const boardByName = {};
+  D.players.forEach((p, i) => {
+    boardByName[p.name] = { player_name: p.name, position_name: D.positions[p.pos], team: p.teamName,
+                            'Final ADP': p.adp, bye: p.bye || null, mu: p.mu, src: p.src, idx: i };
+  });
+  const sortedBoard = Object.values(boardByName).sort((a, b) => a['Final ADP'] - b['Final ADP']);
+  const nameToIdx = new Map(D.players.map((p, i) => [p.name, i]));
+
+  let state = null;
+  let filterPos = 'ALL', searchText = '', showDrafted = false;
+  let simSettings = { nSims: 5000, topK: 5, seed: 7 };
+  let computeToken = 0;
+
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+  // ---------- worker (falls back to sync if unavailable) ----------
+  let worker = null;
+  try {
+    const src = document.querySelector('#simcore-src').textContent +
+      `\nlet DATA=null;\nonmessage = (e) => {\n  const m = e.data;\n  if (m.cmd === 'init') { DATA = m.data; SimCore.init(DATA); return; }\n  if (m.cmd === 'recommend') {\n    DATA.weights = m.weights;\n    const rows = SimCore.recommend(m.myIdx, new Set(m.drafted), m.slot, m.nSims, m.topK, m.seed,\n      (partial, b, nb) => postMessage({ token: m.token, partial, b, nb }));\n    postMessage({ token: m.token, rows });\n  }\n};`;
+    worker = new Worker(URL.createObjectURL(new Blob([src], { type: 'application/javascript' })));
+    worker.postMessage({ cmd: 'init', data: D });
+  } catch (e) {
+    worker = null;
+  }
+
+  function computeRecs(myIdx, drafted, slot, onProgress, onDone) {
+    const token = ++computeToken;
+    const weights = readWeights();
+    if (worker) {
+      const handler = (e) => {
+        if (e.data.token !== token) return;
+        if (e.data.partial) {
+          if (token === computeToken) onProgress(e.data.partial, e.data.b, e.data.nb);
+          return;
+        }
+        worker.removeEventListener('message', handler);
+        if (token === computeToken) onDone(e.data.rows);
+      };
+      worker.addEventListener('message', handler);
+      worker.postMessage({ cmd: 'recommend', myIdx, drafted: [...drafted], slot,
+                           nSims: simSettings.nSims, topK: simSettings.topK, seed: simSettings.seed,
+                           weights, token });
+    } else {
+      setTimeout(() => {
+        D.weights = weights;
+        const rows = SimCore.recommend(myIdx, drafted, slot, simSettings.nSims, simSettings.topK, simSettings.seed,
+          (partial, b, nb) => { if (token === computeToken) onProgress(partial, b, nb); });
+        if (token === computeToken) onDone(rows);
+      }, 30);
+    }
+  }
+
+  function readWeights() {
+    return {
+      playoff_team: parseFloat($('#w-playoff').value) || 0,
+      R3: parseFloat($('#w-r3').value) || 0,
+      finals: parseFloat($('#w-finals').value) || 0,
+      finals_top: parseFloat($('#w-top').value) || 0,
+    };
+  }
+
+  // ---------- rendering ----------
+  function render() {
+    renderTracker();
+    renderBoard();
+    renderRoster();
+    renderLog();
+    triggerRecs();
+  }
+
+  function renderTracker() {
+    const total = AppState.totalPicksMade(state);
+    const done = AppState.myPickCount(state) >= state.nRounds;
+    const cur = AppState.currentPickNum(state);
+    const mine = AppState.isMyTurn(state);
+    const myNext = AppState.myNextPickNum(state);
+    $('#trk-current').textContent = total >= 216 ? 'Draft complete' :
+      `Pick ${AppState.roundDotPick(cur, state.nTeams)} · overall ${cur}`;
+    $('#trk-clock').textContent = total >= 216 ? '' :
+      (mine ? 'YOU are on the clock' : `Team ${AppState.slotOnClock(cur, state.nTeams)} on the clock`);
+    $('#trk-clock').classList.toggle('mine', mine);
+    $('#trk-next').textContent = done ? 'Your roster is full' :
+      `Your next: ${AppState.roundDotPick(myNext, state.nTeams)} (overall ${myNext})`;
+    document.body.classList.toggle('on-clock', mine);
+  }
+
+  function triggerRecs() {
+    const done = AppState.myPickCount(state) >= state.nRounds;
+    const wrap = $('#recs');
+    if (done) { wrap.innerHTML = '<div class="empty">Roster complete — 18 picks in.</div>'; return; }
+    wrap.innerHTML = `<div class="computing">Simulating ${simSettings.nSims.toLocaleString()} seasons × ${simSettings.topK} candidates…</div>`;
+    $('#sim-progress').style.width = '0%';
+    const drafted = new Set([...AppState.draftedNames(state)].map(n => nameToIdx.get(n)).filter(i => i !== undefined));
+    const myIdx = state.picks.filter(p => p.byMe).map(p => nameToIdx.get(p.player_name)).filter(i => i !== undefined);
+    for (const i of myIdx) drafted.delete(i);
+    computeRecs(myIdx, drafted, state.draftSlot,
+      (partial, b, nb) => {
+        $('#sim-progress').style.width = `${Math.round(100 * b / nb)}%`;
+        renderRecs(partial, b < nb ? `refining · ${(partial[0]?.simsDone || 0).toLocaleString()} seasons in` : null);
+      },
+      rows => { $('#sim-progress').style.width = '100%'; renderRecs(rows, null); });
+  }
+
+  function stackBadge(r) {
+    // Same-NFL-team with ANY player I've drafted -> STACK badge. Otherwise, if the
+    // candidate's team FACES one of my players' teams in Week 15/16/17 (the gauntlet
+    // weeks, where game-level correlation is a real leverage play), show the matchup.
+    const myRows = state.picks.filter(p => p.byMe).map(p => boardByName[p.player_name]).filter(Boolean);
+    if (!myRows.length || r.team === 'UNK') return '';
+    const myTeams = new Set(myRows.map(m => m.team).filter(t => t && t !== 'UNK'));
+    if (myTeams.has(r.team)) {
+      const mates = myRows.filter(m => m.team === r.team).map(m => m.player_name.split(' ').slice(-1)[0]);
+      return `<span class="badge" title="same team as ${esc(mates.join(', '))}">STACK ${esc(r.team)}</span>`;
+    }
+    const opps = (D.sched1517 || {})[r.team];
+    if (!opps) return '';
+    const badges = [];
+    for (let k = 0; k < 3; k++) {
+      if (opps[k] && myTeams.has(opps[k]))
+        badges.push(`<span class="badge game">W${15 + k} vs ${esc(opps[k])}</span>`);
+    }
+    return badges.join('');
+  }
+
+  function renderRecs(rows, refiningNote) {
+    const wrap = $('#recs');
+    if (!rows.length) { wrap.innerHTML = '<div class="empty">No legal candidates.</div>'; return; }
+    const maxEq = rows[0].equity || 1;
+    const note = refiningNote ? `<div class="computing">${refiningNote}…</div>` : '';
+    wrap.innerHTML = note + rows.map((r, i) => {
+      const pct = maxEq > 0 ? Math.max(3, Math.round(100 * r.equity / maxEq)) : 3;
+      const srcBadge = r.muSrc === 'u' ? '<span class="badge src">YOUR PROJ</span>' : '';
+      const se = r.equitySE !== null && r.equitySE !== undefined ? ` <span class="se">±${r.equitySE.toFixed(2)}</span>` : '';
+      return `<div class="rec pos-${r.position}" data-player="${esc(r.name)}">
+        <div class="rec-rank">${i + 1}</div>
+        <div class="rec-main">
+          <div class="rec-name">${esc(r.name)}
+            <span class="chip pos-${r.position}">${r.position}</span>${stackBadge(r)}${srcBadge}</div>
+          <div class="rec-meta">${esc(r.team)} · ADP ${r.adp.toFixed(1)} · proj ${r.mu.toFixed(1)} ppg</div>
+          <div class="rec-meta mono">Py ${(r.P_playoff * 100).toFixed(1)}% · R3 ${(r.P_R3 * 100).toFixed(1)}% · Fin ${(r.P_finals * 100).toFixed(2)}% · Top ${(r.P_finals_top * 100).toFixed(2)}%</div>
+          <div class="conf"><div class="conf-fill" style="width:${pct}%"></div></div>
+        </div>
+        <div class="rec-eq"><div class="eq-num">${r.equity.toFixed(2)}${se}</div><div class="eq-lbl">equity</div></div>
+        <button class="btn gold rec-take">Take</button>
+      </div>`;
+    }).join('');
+    wrap.querySelectorAll('.rec-take').forEach(btn => btn.addEventListener('click', e => {
+      pick(e.target.closest('.rec').dataset.player, true);
+    }));
+  }
+
+  function renderBoard() {
+    const drafted = AppState.draftedNames(state);
+    const mine = AppState.isMyTurn(state);
+    const q = searchText.trim().toLowerCase();
+    const rows = sortedBoard.filter(p => {
+      if (!showDrafted && drafted.has(p.player_name)) return false;
+      if (filterPos !== 'ALL' && p.position_name !== filterPos) return false;
+      if (q && !p.player_name.toLowerCase().includes(q)) return false;
+      return true;
+    }).slice(0, 60);
+
+    $('#board').innerHTML = rows.map(p => {
+      const isDrafted = drafted.has(p.player_name);
+      return `<div class="prow pos-${p.position_name} ${isDrafted ? 'drafted' : ''}" data-player="${esc(p.player_name)}">
+        <span class="chip pos-${p.position_name}">${p.position_name}</span>
+        <span class="pname">${esc(p.player_name)}${p.src === 'u' ? ' <span class="dot" title="your projection"></span>' : ''}</span>
+        <span class="pmeta">${esc(p.team)} · bye ${p.bye ?? '–'} · ${p.mu.toFixed(1)}p</span>
+        <span class="padp">${p['Final ADP'].toFixed(1)}</span>
+        ${isDrafted ? '<span class="gone">off board</span>' :
+          `<button class="btn ${mine ? 'gold' : ''} act-primary">${mine ? 'My pick' : 'Drafted'}</button>
+           <button class="btn ghost act-secondary">${mine ? 'By other' : 'By me'}</button>`}
+      </div>`;
+    }).join('') || '<div class="empty">No players match.</div>';
+
+    $('#board').querySelectorAll('.act-primary').forEach(b => b.addEventListener('click', e => {
+      pick(e.target.closest('.prow').dataset.player, AppState.isMyTurn(state));
+    }));
+    $('#board').querySelectorAll('.act-secondary').forEach(b => b.addEventListener('click', e => {
+      pick(e.target.closest('.prow').dataset.player, !AppState.isMyTurn(state));
+    }));
+  }
+
+  function renderRoster() {
+    const roster = AppState.myRosterRows(state, boardByName, () => 0);
+    const byPos = {};
+    for (const r of roster) (byPos[r.position_name] = byPos[r.position_name] || []).push(r);
+    $('#roster').innerHTML = POS_ORDER.map(pos => {
+      const list = byPos[pos] || [];
+      const cap = D.caps[pos];
+      return `<div class="rgroup">
+        <div class="rhead"><span class="chip pos-${pos}">${pos}</span><span class="rcount">${list.length}/${cap}</span></div>
+        ${list.map(r => `<div class="ritem"><span>${esc(r.player_name)}</span>
+          <span class="rmeta">${AppState.roundDotPick(r.pickNum, state.nTeams)} · bye ${boardByName[r.player_name].bye ?? '–'} · ${boardByName[r.player_name].mu.toFixed(1)}p</span></div>`).join('')
+          || '<div class="ritem none">—</div>'}
+      </div>`;
+    }).join('');
+  }
+
+  function renderLog() {
+    const rows = state.picks.map((p, i) => `<div class="litem ${p.byMe ? 'mine' : ''}">
+        <span class="lnum">${AppState.roundDotPick(i + 1, state.nTeams)}</span>
+        <span>${esc(p.player_name)}</span>
+        <span class="lwho">${p.byMe ? 'YOU' : 'Team ' + AppState.slotOnClock(i + 1, state.nTeams)}</span>
+        <button class="btn ghost lrm" data-i="${i}">×</button>
+      </div>`).reverse().join('');
+    $('#log').innerHTML = rows || '<div class="empty">No picks logged yet.</div>';
+    $('#log').querySelectorAll('.lrm').forEach(b => b.addEventListener('click', e => {
+      state = AppState.removePick(state, Number(e.target.dataset.i));
+      render();
+    }));
+    $('#undo').disabled = !state.picks.length;
+  }
+
+  // ---------- actions ----------
+  function pick(name, byMe) {
+    if (byMe && AppState.myPickCount(state) >= state.nRounds) return;
+    const r = AppState.applyPick(state, name, byMe);
+    if (r.ok) { state = r.state; render(); }
+  }
+
+  $('#undo').addEventListener('click', () => { state = AppState.undoLast(state); render(); });
+  $('#search').addEventListener('input', e => { searchText = e.target.value; renderBoard(); });
+  $('#show-drafted').addEventListener('change', e => { showDrafted = e.target.checked; renderBoard(); });
+  document.querySelectorAll('.pos-filter button').forEach(b => b.addEventListener('click', e => {
+    filterPos = e.target.dataset.pos;
+    document.querySelectorAll('.pos-filter button').forEach(x => x.classList.toggle('active', x === e.target));
+    renderBoard();
+  }));
+
+  $('#sims-sel').addEventListener('change', e => { simSettings.nSims = Number(e.target.value); triggerRecs(); });
+  $('#cands-sel').addEventListener('change', e => { simSettings.topK = Number(e.target.value); triggerRecs(); });
+  $('#reroll').addEventListener('click', () => { simSettings.seed = (simSettings.seed * 7919 + 17) % 1000003; triggerRecs(); });
+  $('#apply-weights').addEventListener('click', () => triggerRecs());
+
+  $('#export').addEventListener('click', () => {
+    const blob = new Blob([AppState.serialize(state)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `draft_slot${state.draftSlot}_${state.picks.length}picks.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
+  const importHandler = e => {
+    const f = e.target.files[0];
+    if (!f) return;
+    f.text().then(t => {
+      try { state = AppState.deserialize(t); $('#setup').classList.add('hidden'); render(); }
+      catch (err) { alert('Could not read that file: ' + err.message); }
+    });
+  };
+  $('#import').addEventListener('change', importHandler);
+  $('#setup-import').addEventListener('change', importHandler);
+  $('#reset').addEventListener('click', () => {
+    if (confirm('Clear the whole draft? Export first if you want to keep it.')) {
+      state = null;
+      $('#setup').classList.remove('hidden');
+    }
+  });
+
+  const slotSel = $('#slot');
+  for (let i = 1; i <= D.nTeams; i++) {
+    const o = document.createElement('option');
+    o.value = i; o.textContent = `Slot ${i}`;
+    slotSel.appendChild(o);
+  }
+  $('#start').addEventListener('click', () => {
+    state = AppState.newState(Number(slotSel.value), D.nTeams, D.nRounds);
+    $('#setup').classList.add('hidden');
+    render();
+  });
+
+  window.addEventListener('beforeunload', e => {
+    if (state && state.picks.length) { e.preventDefault(); e.returnValue = ''; }
+  });
+
+  // seed default weight inputs from embedded data
+  $('#w-playoff').value = D.weights.playoff_team;
+  $('#w-r3').value = D.weights.R3;
+  $('#w-finals').value = D.weights.finals;
+  $('#w-top').value = D.weights.finals_top;
+  $('#model-note').textContent =
+    `${D.nUserProj} of ${D.players.length} players on your projections · Monte Carlo equity engine`;
+})();
+</script>
+</body>
+</html>
