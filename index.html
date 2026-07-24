@@ -82,7 +82,20 @@ section h2{font-family:'Space Grotesk',sans-serif;font-size:11px;letter-spacing:
 .rec:last-child{border-bottom:0}
 .rec.pos-QB{border-left-color:var(--qb)} .rec.pos-RB{border-left-color:var(--rb)}
 .rec.pos-WR{border-left-color:var(--wr)} .rec.pos-TE{border-left-color:var(--te)}
-.rec-rank{font-family:ui-monospace,Consolas,monospace;color:var(--muted);font-size:13px;width:16px}
+.rec-rank{font-family:ui-monospace,Consolas,monospace;color:var(--muted);font-size:13px;width:16px;position:relative}
+.key-hint{position:absolute;top:-6px;left:16px;font-size:8px;color:var(--gold);border:1px solid var(--gold);border-radius:3px;padding:0 2px;line-height:1.3;opacity:.65}
+.bd-toggle{margin-top:6px;background:none;border:0;color:var(--muted);font-size:10.5px;padding:0;cursor:pointer;display:flex;align-items:center;gap:3px}
+.bd-toggle:hover{color:var(--gold)}
+.bd-chevron{font-size:9px;transition:transform .15s}
+.bd-toggle.open .bd-chevron{transform:rotate(180deg)}
+.bd-detail{margin-top:6px;font-size:11px}
+.bd-bar{display:flex;height:6px;border-radius:3px;overflow:hidden;margin-bottom:5px;background:var(--panel-2)}
+.bd-seg{height:100%}
+.bd-seg.bd-playoff{background:#00d4aa33}
+.bd-seg.bd-r3{background:#00d4aa66}
+.bd-seg.bd-finals{background:#00d4aa99}
+.bd-seg.bd-top{background:#00d4aa}
+.bd-row{display:flex;justify-content:space-between;color:var(--muted);padding:1px 0}
 .rec-main{flex:1;min-width:0}
 .rec-name{font-weight:700;font-size:14px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .rec-meta{color:var(--muted);font-size:11.5px;margin-top:1px}
@@ -228,6 +241,7 @@ section h2{font-family:'Space Grotesk',sans-serif;font-size:11px;letter-spacing:
       If two candidates' ranges overlap, the ordering is a coin flip — raise sims (or Re-roll and
       compare) before acting on it. Every batch also re-draws the opponent room, so estimates
       average over field behavior, not just player scoring.</div>
+      <div class="noise-note">Shortcuts: <b>1–9</b> drafts that ranked pick · <b>/</b> search · <b>u</b> undo</div>
     </section>
     <section>
       <h2>My roster</h2>
@@ -1462,6 +1476,24 @@ onmessage = (e) => {
     return badges.join('');
   }
 
+  function equityBreakdown(r) {
+    // equity = w.playoff_team*P_playoff + w.R3*P_R3 + w.finals*P_finals + w.finals_top*P_finals_top --
+    // this is exactly linear, so "why did this pick rank here" is just showing each term's
+    // weighted contribution. D.weights holds whatever weights were active for this compute
+    // (set right before the sim run), so contributions here always match the displayed equity.
+    const w = D.weights;
+    const terms = [
+      { key: 'playoff', label: 'Playoff berth', value: w.playoff_team * r.P_playoff },
+      { key: 'r3', label: 'Reach Round 3', value: w.R3 * r.P_R3 },
+      { key: 'finals', label: 'Reach finals', value: w.finals * r.P_finals },
+      { key: 'top', label: 'Finals top finish', value: w.finals_top * r.P_finals_top },
+    ];
+    const total = terms.reduce((s, t) => s + t.value, 0) || 1;
+    for (const t of terms) t.pct = Math.max(0, (t.value / total) * 100);
+    const driver = terms.reduce((a, b) => (b.value > a.value ? b : a));
+    return { terms, driver };
+  }
+
   function renderRecs(rows, refiningNote) {
     const wrap = $('#recs');
     if (!rows.length) { wrap.innerHTML = '<div class="empty">No legal candidates.</div>'; return; }
@@ -1471,14 +1503,22 @@ onmessage = (e) => {
       const pct = maxEq > 0 ? Math.max(3, Math.round(100 * r.equity / maxEq)) : 3;
       const srcBadge = r.muSrc === 'u' ? '<span class="badge src">YOUR PROJ</span>' : '';
       const se = r.equitySE !== null && r.equitySE !== undefined ? ` <span class="se">±${r.equitySE.toFixed(2)}</span>` : '';
-      return `<div class="rec pos-${r.position}" data-player="${esc(r.name)}">
-        <div class="rec-rank">${i + 1}</div>
+      const bd = equityBreakdown(r);
+      const bar = bd.terms.map(t => `<div class="bd-seg bd-${t.key}" style="width:${t.pct}%" title="${esc(t.label)}: ${t.value.toFixed(3)} (${t.pct.toFixed(0)}%)"></div>`).join('');
+      const detail = bd.terms.map(t => `<div class="bd-row"><span>${esc(t.label)}</span><span class="mono">${t.value.toFixed(3)} · ${t.pct.toFixed(0)}%</span></div>`).join('');
+      return `<div class="rec pos-${r.position}" data-player="${esc(r.name)}" data-rank="${i + 1}">
+        <div class="rec-rank">${i + 1}<span class="key-hint">${i < 9 ? i + 1 : ''}</span></div>
         <div class="rec-main">
           <div class="rec-name">${esc(r.name)}
             <span class="chip pos-${r.position}">${r.position}</span>${stackBadge(r)}${srcBadge}</div>
           <div class="rec-meta">${esc(r.team)} · ADP ${r.adp.toFixed(1)} · proj ${r.mu.toFixed(1)} ppg</div>
           <div class="rec-meta mono">Py ${(r.P_playoff * 100).toFixed(1)}% · R3 ${(r.P_R3 * 100).toFixed(1)}% · Fin ${(r.P_finals * 100).toFixed(2)}% · Top ${(r.P_finals_top * 100).toFixed(2)}%</div>
           <div class="conf"><div class="conf-fill" style="width:${pct}%"></div></div>
+          <button class="bd-toggle" type="button">Driven by ${esc(bd.driver.label)} <span class="bd-chevron">▾</span></button>
+          <div class="bd-detail" hidden>
+            <div class="bd-bar">${bar}</div>
+            ${detail}
+          </div>
         </div>
         <div class="rec-eq"><div class="eq-num">${r.equity.toFixed(2)}${se}</div><div class="eq-lbl">equity</div></div>
         <button class="btn gold rec-take">Take</button>
@@ -1486,6 +1526,11 @@ onmessage = (e) => {
     }).join('');
     wrap.querySelectorAll('.rec-take').forEach(btn => btn.addEventListener('click', e => {
       pick(e.target.closest('.rec').dataset.player, true);
+    }));
+    wrap.querySelectorAll('.bd-toggle').forEach(btn => btn.addEventListener('click', e => {
+      const detail = e.target.closest('.rec').querySelector('.bd-detail');
+      detail.hidden = !detail.hidden;
+      e.target.closest('.bd-toggle').classList.toggle('open', !detail.hidden);
     }));
   }
 
@@ -1609,6 +1654,34 @@ onmessage = (e) => {
     $('#setup').classList.add('hidden');
     render();
   });
+
+  // ---------- keyboard shortcuts ----------
+  // Digit keys 1-9 draft the Nth-ranked recommendation instantly -- the highest-value
+  // shortcut during a live draft with a short pick clock. 'u' undoes, '/' jumps to
+  // search, Escape blurs whatever's focused. All guarded off while typing in a field
+  // so normal text entry (search box, weight inputs) is never hijacked.
+  document.addEventListener('keydown', (e) => {
+    if (!state) return;
+    const tag = (e.target && e.target.tagName || '').toLowerCase();
+    const typing = tag === 'input' || tag === 'select' || tag === 'textarea' || (e.target && e.target.isContentEditable);
+    if (e.key === 'Escape') { e.target && e.target.blur && e.target.blur(); return; }
+    if (typing) return;
+    if (e.key === '/') {
+      e.preventDefault();
+      const s = $('#search');
+      if (s) s.focus();
+      return;
+    }
+    if (e.key.toLowerCase() === 'u' && !e.metaKey && !e.ctrlKey) {
+      if (!$('#undo').disabled) { state = AppState.undoLast(state); render(); }
+      return;
+    }
+    if (/^[1-9]$/.test(e.key)) {
+      const rec = document.querySelector(`.rec[data-rank="${e.key}"]`);
+      if (rec) pick(rec.dataset.player, true);
+    }
+  });
+
 
   window.addEventListener('beforeunload', e => {
     if (state && state.picks.length) { e.preventDefault(); e.returnValue = ''; }
