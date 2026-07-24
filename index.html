@@ -1389,6 +1389,18 @@ if (typeof module !== 'undefined') module.exports = AppState;
   // threaded sync-fallback path -- with several workers already splitting the load, an
   // early-exit signal would need cross-worker coordination for a benefit that pre-measurement
   // showed was small anyway, since the closest, most useful picks rarely trigger it.)
+  //
+  // Robustness: an uncaught exception inside a worker's message handler silently kills that
+  // invocation -- any batches after the failure point never run, and the final "done" signal
+  // at the end of the loop never gets sent. With no error handling, that permanently stalls
+  // computeRecs(), since it's waiting for a "done" from every worker before ever resolving --
+  // this is the "stuck at Simulating..." symptom. Three layers guard against it: (1) each
+  // batch runs in its own try/catch inside the worker, so one bad batch can't take down the
+  // rest of that worker's assigned batches; (2) each worker has an onerror handler, so even a
+  // total worker death (e.g. thrown before the per-batch loop starts) still counts toward
+  // completion instead of hanging forever; (3) a watchdog timeout resolves with whatever has
+  // accumulated so far if nothing arrives for several seconds, as a last-resort backstop for
+  // any failure mode neither of the above anticipated.
   const hwConcurrency = (typeof navigator !== 'undefined' && navigator.hardwareConcurrency) || 4;
   const N_WORKERS = Math.max(1, Math.min(hwConcurrency, 4));
   let workerPool = [];
@@ -1400,10 +1412,20 @@ onmessage = (e) => {
   if (m.cmd === 'init') { DATA = m.data; SimCore.init(DATA); return; }
   if (m.cmd === 'runBatches') {
     DATA.weights = m.weights;
-    const { cands, rosters } = SimCore.prepareCandidates(m.myIdx, new Set(m.drafted), m.slot, m.topK);
+    let cands, rosters;
+    try {
+      ({ cands, rosters } = SimCore.prepareCandidates(m.myIdx, new Set(m.drafted), m.slot, m.topK));
+    } catch (err) {
+      postMessage({ token: m.token, workerId: m.workerId, done: true, error: String(err) });
+      return;
+    }
     for (const b of m.batchIndices) {
-      const batchResults = SimCore.runBatch(rosters, cands, m.seed, b, m.batchSize);
-      postMessage({ token: m.token, workerId: m.workerId, b, batchResults });
+      try {
+        const batchResults = SimCore.runBatch(rosters, cands, m.seed, b, m.batchSize);
+        postMessage({ token: m.token, workerId: m.workerId, b, batchResults });
+      } catch (err) {
+        postMessage({ token: m.token, workerId: m.workerId, b, error: String(err) });
+      }
     }
     postMessage({ token: m.token, workerId: m.workerId, done: true });
   }
@@ -1426,20 +1448,52 @@ onmessage = (e) => {
       const { cands, rosters } = SimCore.prepareCandidates(myIdx, drafted, slot, simSettings.topK);
       const { nBatches, batchSize } = SimCore.batchPlan(simSettings.nSims);
       const acc = SimCore.newAcc(cands.length);
-      let batchesDone = 0, workersDone = 0;
+      let batchesDone = 0, workersDone = 0, settled = false;
       const handlers = [];
-      const cleanup = () => { for (let i = 0; i < workerPool.length; i++) workerPool[i].removeEventListener('message', handlers[i]); };
+      const errorHandlers = [];
+      let watchdog = null;
+      const cleanup = () => {
+        for (let i = 0; i < workerPool.length; i++) {
+          workerPool[i].removeEventListener('message', handlers[i]);
+          workerPool[i].removeEventListener('error', errorHandlers[i]);
+        }
+        if (watchdog) clearTimeout(watchdog);
+      };
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        if (token === computeToken) onDone(SimCore.assembleRows(cands, acc));
+      };
+      const resetWatchdog = () => {
+        if (watchdog) clearTimeout(watchdog);
+        // No progress for 8s straight is never expected under normal load (a single batch
+        // takes well under a second) -- resolve with whatever's accumulated rather than
+        // risk hanging indefinitely on a device/browser combo this wasn't tested against.
+        watchdog = setTimeout(finish, 8000);
+      };
       for (let i = 0; i < workerPool.length; i++) {
         const handler = (e) => {
           if (e.data.token !== token) return;
-          if (e.data.done) { workersDone++; if (workersDone === workerPool.length) { cleanup(); if (token === computeToken) onDone(SimCore.assembleRows(cands, acc)); } return; }
+          resetWatchdog();
+          if (e.data.done) { workersDone++; if (workersDone === workerPool.length) finish(); return; }
+          if (e.data.error) return;   // one bad batch skipped; that worker keeps going
           SimCore.mergeBatchIntoAcc(acc, e.data.batchResults);
           batchesDone++;
           if (token === computeToken) onProgress(SimCore.assembleRows(cands, acc), batchesDone, nBatches);
         };
+        const errorHandler = () => {
+          // The worker itself died (not just one batch inside it) -- count it as done so the
+          // overall computation can still resolve, just with a smaller effective sim count.
+          workersDone++;
+          if (workersDone === workerPool.length) finish();
+        };
         handlers.push(handler);
+        errorHandlers.push(errorHandler);
         workerPool[i].addEventListener('message', handler);
+        workerPool[i].addEventListener('error', errorHandler);
       }
+      resetWatchdog();
       // Round-robin the batch indices across workers so each gets a roughly equal share.
       const batchIndicesFor = Array.from({ length: workerPool.length }, () => []);
       for (let b = 0; b < nBatches; b++) batchIndicesFor[b % workerPool.length].push(b);
