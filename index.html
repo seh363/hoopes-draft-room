@@ -1403,9 +1403,9 @@ if (typeof module !== 'undefined') module.exports = AppState;
   // any failure mode neither of the above anticipated.
   const hwConcurrency = (typeof navigator !== 'undefined' && navigator.hardwareConcurrency) || 4;
   const N_WORKERS = Math.max(1, Math.min(hwConcurrency, 4));
-  let workerPool = [];
-  try {
-    const workerSrc = document.querySelector('#simcore-src').textContent + `
+  const WORKER_SRC = (() => {
+    try {
+      return document.querySelector('#simcore-src').textContent + `
 let DATA = null;
 onmessage = (e) => {
   const m = e.data;
@@ -1430,20 +1430,52 @@ onmessage = (e) => {
     postMessage({ token: m.token, workerId: m.workerId, done: true });
   }
 };`;
-    const blobUrl = URL.createObjectURL(new Blob([workerSrc], { type: 'application/javascript' }));
-    for (let i = 0; i < N_WORKERS; i++) {
-      const w = new Worker(blobUrl);
-      w.postMessage({ cmd: 'init', data: D });
-      workerPool.push(w);
+    } catch (e) { return null; }
+  })();
+
+  let workerPool = [];
+  let poolBusy = false;   // true from the moment a computation is dispatched until it settles
+
+  function spawnWorkerPool() {
+    if (!WORKER_SRC) return [];
+    try {
+      const blobUrl = URL.createObjectURL(new Blob([WORKER_SRC], { type: 'application/javascript' }));
+      const pool = [];
+      for (let i = 0; i < N_WORKERS; i++) {
+        const w = new Worker(blobUrl);
+        w.postMessage({ cmd: 'init', data: D });
+        pool.push(w);
+      }
+      return pool;
+    } catch (e) {
+      return [];
     }
-  } catch (e) {
-    workerPool = [];
   }
+  workerPool = spawnWorkerPool();
 
   function computeRecs(myIdx, drafted, slot, onProgress, onDone) {
     const token = ++computeToken;
     const weights = readWeights();
     if (workerPool.length) {
+      // Rapid successive calls (e.g. clicking through several opponent picks quickly, which
+      // each re-triggers a compute) used to queue up behind whatever the workers were still
+      // grinding through -- workers process messages strictly one at a time with no
+      // cancellation, so a backlog of superseded jobs could delay the CURRENT request past
+      // the watchdog timeout, which then resolved with an accumulator that had never received
+      // any real results: every equity showing 0. Terminating and respawning fresh workers
+      // whenever a new request arrives while the previous one is still mid-flight guarantees
+      // the current request always starts on genuinely idle workers, with zero backlog -- at
+      // the cost of a brief respawn (re-sending the ~100KB data payload) only in that specific
+      // case. The common case (clicking at normal draft speed, previous compute already
+      // settled) pays no extra cost at all and reuses the existing idle pool.
+      if (poolBusy) {
+        for (const w of workerPool) w.terminate();
+        workerPool = spawnWorkerPool();
+      }
+      poolBusy = true;
+      const pool = workerPool;   // snapshot -- this call's closures must stay pinned to
+                                 // THESE worker objects even if a later call reassigns
+                                 // the module-level workerPool out from under it
       D.weights = weights;   // assembleRows() below reads D.weights on the main thread
       const { cands, rosters } = SimCore.prepareCandidates(myIdx, drafted, slot, simSettings.topK);
       const { nBatches, batchSize } = SimCore.batchPlan(simSettings.nSims);
@@ -1453,9 +1485,9 @@ onmessage = (e) => {
       const errorHandlers = [];
       let watchdog = null;
       const cleanup = () => {
-        for (let i = 0; i < workerPool.length; i++) {
-          workerPool[i].removeEventListener('message', handlers[i]);
-          workerPool[i].removeEventListener('error', errorHandlers[i]);
+        for (let i = 0; i < pool.length; i++) {
+          pool[i].removeEventListener('message', handlers[i]);
+          pool[i].removeEventListener('error', errorHandlers[i]);
         }
         if (watchdog) clearTimeout(watchdog);
       };
@@ -1463,6 +1495,7 @@ onmessage = (e) => {
         if (settled) return;
         settled = true;
         cleanup();
+        if (pool === workerPool) poolBusy = false;   // only the pool currently in use can clear the busy flag
         if (token === computeToken) onDone(SimCore.assembleRows(cands, acc));
       };
       const resetWatchdog = () => {
@@ -1472,11 +1505,11 @@ onmessage = (e) => {
         // risk hanging indefinitely on a device/browser combo this wasn't tested against.
         watchdog = setTimeout(finish, 8000);
       };
-      for (let i = 0; i < workerPool.length; i++) {
+      for (let i = 0; i < pool.length; i++) {
         const handler = (e) => {
           if (e.data.token !== token) return;
           resetWatchdog();
-          if (e.data.done) { workersDone++; if (workersDone === workerPool.length) finish(); return; }
+          if (e.data.done) { workersDone++; if (workersDone === pool.length) finish(); return; }
           if (e.data.error) return;   // one bad batch skipped; that worker keeps going
           SimCore.mergeBatchIntoAcc(acc, e.data.batchResults);
           batchesDone++;
@@ -1486,19 +1519,19 @@ onmessage = (e) => {
           // The worker itself died (not just one batch inside it) -- count it as done so the
           // overall computation can still resolve, just with a smaller effective sim count.
           workersDone++;
-          if (workersDone === workerPool.length) finish();
+          if (workersDone === pool.length) finish();
         };
         handlers.push(handler);
         errorHandlers.push(errorHandler);
-        workerPool[i].addEventListener('message', handler);
-        workerPool[i].addEventListener('error', errorHandler);
+        pool[i].addEventListener('message', handler);
+        pool[i].addEventListener('error', errorHandler);
       }
       resetWatchdog();
       // Round-robin the batch indices across workers so each gets a roughly equal share.
-      const batchIndicesFor = Array.from({ length: workerPool.length }, () => []);
-      for (let b = 0; b < nBatches; b++) batchIndicesFor[b % workerPool.length].push(b);
-      for (let i = 0; i < workerPool.length; i++) {
-        workerPool[i].postMessage({ cmd: 'runBatches', myIdx, drafted: [...drafted], slot,
+      const batchIndicesFor = Array.from({ length: pool.length }, () => []);
+      for (let b = 0; b < nBatches; b++) batchIndicesFor[b % pool.length].push(b);
+      for (let i = 0; i < pool.length; i++) {
+        pool[i].postMessage({ cmd: 'runBatches', myIdx, drafted: [...drafted], slot,
                                     topK: simSettings.topK, seed: simSettings.seed, batchSize,
                                     batchIndices: batchIndicesFor[i], weights, token, workerId: i });
       }
