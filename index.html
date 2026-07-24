@@ -96,6 +96,14 @@ section h2{font-family:'Space Grotesk',sans-serif;font-size:11px;letter-spacing:
 .bd-seg.bd-finals{background:#00d4aa99}
 .bd-seg.bd-top{background:#00d4aa}
 .bd-row{display:flex;justify-content:space-between;color:var(--muted);padding:1px 0}
+.summary{display:flex;flex-direction:column;gap:14px}
+.summary-sec h3{font-family:'Space Grotesk',sans-serif;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--gold);margin:0 0 6px}
+.summary-row{font-size:12.5px;padding:4px 0;border-bottom:1px solid var(--line);color:var(--ink)}
+.summary-row.mono{font-family:ui-monospace,Consolas,monospace}
+.summary-row:last-child{border-bottom:none}
+.summary-empty{font-size:12px;color:var(--muted);font-style:italic}
+.team-chip{display:inline-block;background:var(--panel-2);border:1px solid var(--line);border-radius:5px;padding:1px 6px;font-size:10.5px;font-weight:700;margin-right:4px}
+.value-tag{color:var(--gold);font-weight:700;font-family:ui-monospace,Consolas,monospace;font-size:11px}
 .rec-main{flex:1;min-width:0}
 .rec-name{font-weight:700;font-size:14px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .rec-meta{color:var(--muted);font-size:11.5px;margin-top:1px}
@@ -169,12 +177,11 @@ section h2{font-family:'Space Grotesk',sans-serif;font-size:11px;letter-spacing:
 <div id="setup">
   <div class="setup-card">
     <h1>Hoopes <b>Sim Draft Room</b></h1>
-    <p>12-team best ball · 18 rounds · picks ranked by Monte Carlo tournament equity, simulated live in this page with your projections.</p>
+    <p>12-team best ball · 18 rounds · picks ranked by Monte Carlo tournament equity, simulated live in this page with Hoopes' projections.</p>
     <label for="slot">Your draft slot</label>
     <select id="slot"></select>
     <div class="setup-actions">
       <button id="start" class="btn gold">Start draft</button>
-      <label class="btn ghost file-btn">Resume from file<input id="setup-import" type="file" accept=".json"></label>
     </div>
   </div>
 </div>
@@ -189,10 +196,15 @@ section h2{font-family:'Space Grotesk',sans-serif;font-size:11px;letter-spacing:
   <div><span class="lbl">Now</span><span id="trk-current">–</span></div>
   <div><span class="lbl">Clock</span><span id="trk-clock">–</span></div>
   <div><span class="lbl">You</span><span id="trk-next">–</span></div>
+  <div id="pick-timer" class="pick-timer" hidden><span id="pick-timer-num">20</span>s</div>
 </div>
 
 <div class="grid">
   <main>
+    <section id="summary-section" hidden>
+      <h2>Draft summary</h2>
+      <div id="summary"></div>
+    </section>
     <section>
       <h2>Player board</h2>
       <div class="board-tools">
@@ -241,7 +253,7 @@ section h2{font-family:'Space Grotesk',sans-serif;font-size:11px;letter-spacing:
       If two candidates' ranges overlap, the ordering is a coin flip — raise sims (or Re-roll and
       compare) before acting on it. Every batch also re-draws the opponent room, so estimates
       average over field behavior, not just player scoring.</div>
-      <div class="noise-note">Shortcuts: <b>1–9</b> drafts that ranked pick · <b>/</b> search · <b>u</b> undo</div>
+      <div class="noise-note">Shortcuts: <b>1–9</b> drafts that ranked pick · <b>/</b> jump to search, then type a name + <b>Enter</b> to mark it drafted by another team (only fires on an exact single match) · <b>u</b> undo</div>
     </section>
     <section>
       <h2>My roster</h2>
@@ -725,9 +737,26 @@ const SimCore = (() => {
     return assembleRows(cands, acc);
   }
 
+  // Evaluates one fixed, already-complete roster (e.g. a finished 18-man draft) using the
+  // exact same batched-Monte-Carlo machinery as recommend() -- reuses runBatch/assembleRows
+  // with a single-element candidate/roster list, so the numbers are computed identically to
+  // everything shown during the draft, just for a roster that needs no further autofill.
+  function evaluateRoster(rosterIdx, nSims, seed, onBatch) {
+    const { nBatches, batchSize } = batchPlan(nSims);
+    const acc = newAcc(1);
+    const placeholderCand = rosterIdx[0];
+    let rows = [];
+    for (let b = 0; b < nBatches; b++) {
+      mergeBatchIntoAcc(acc, runBatch([rosterIdx], [placeholderCand], seed, b, batchSize));
+      rows = assembleRows([placeholderCand], acc);
+      if (onBatch) onBatch(rows[0], b + 1, nBatches);
+    }
+    return rows[0];
+  }
+
   return { init, makeRng, drawScores, rosterWeekScores, makeBotRosters, makeBotRostersRandomized,
            buildOpponentField, finishOpponentField, rosterEquity, rosterEquityCounts, autofill, recommend, quantile,
-           prepareCandidates, runBatch, newAcc, mergeBatchIntoAcc, assembleRows, batchPlan,
+           prepareCandidates, runBatch, newAcc, mergeBatchIntoAcc, assembleRows, batchPlan, evaluateRoster,
            _internals: () => ({ posArr, teamArr, adpArr, muArr, byeArr, adpOrder, D }) };
 })();
 
@@ -1197,9 +1226,26 @@ const SimCore = (() => {
     return assembleRows(cands, acc);
   }
 
+  // Evaluates one fixed, already-complete roster (e.g. a finished 18-man draft) using the
+  // exact same batched-Monte-Carlo machinery as recommend() -- reuses runBatch/assembleRows
+  // with a single-element candidate/roster list, so the numbers are computed identically to
+  // everything shown during the draft, just for a roster that needs no further autofill.
+  function evaluateRoster(rosterIdx, nSims, seed, onBatch) {
+    const { nBatches, batchSize } = batchPlan(nSims);
+    const acc = newAcc(1);
+    const placeholderCand = rosterIdx[0];
+    let rows = [];
+    for (let b = 0; b < nBatches; b++) {
+      mergeBatchIntoAcc(acc, runBatch([rosterIdx], [placeholderCand], seed, b, batchSize));
+      rows = assembleRows([placeholderCand], acc);
+      if (onBatch) onBatch(rows[0], b + 1, nBatches);
+    }
+    return rows[0];
+  }
+
   return { init, makeRng, drawScores, rosterWeekScores, makeBotRosters, makeBotRostersRandomized,
            buildOpponentField, finishOpponentField, rosterEquity, rosterEquityCounts, autofill, recommend, quantile,
-           prepareCandidates, runBatch, newAcc, mergeBatchIntoAcc, assembleRows, batchPlan,
+           prepareCandidates, runBatch, newAcc, mergeBatchIntoAcc, assembleRows, batchPlan, evaluateRoster,
            _internals: () => ({ posArr, teamArr, adpArr, muArr, byeArr, adpOrder, D }) };
 })();
 
@@ -1430,18 +1476,132 @@ onmessage = (e) => {
     const myNext = AppState.myNextPickNum(state);
     $('#trk-current').textContent = total >= 216 ? 'Draft complete' :
       `Pick ${AppState.roundDotPick(cur, state.nTeams)} · overall ${cur}`;
+    const picksAway = myNext - cur;
     $('#trk-clock').textContent = total >= 216 ? '' :
-      (mine ? 'YOU are on the clock' : `Team ${AppState.slotOnClock(cur, state.nTeams)} on the clock`);
+      (mine ? 'YOU are on the clock' :
+       `Team ${AppState.slotOnClock(cur, state.nTeams)} on the clock · ${picksAway} pick${picksAway === 1 ? '' : 's'} until you're up`);
     $('#trk-clock').classList.toggle('mine', mine);
     $('#trk-next').textContent = done ? 'Your roster is full' :
       `Your next: ${AppState.roundDotPick(myNext, state.nTeams)} (overall ${myNext})`;
     document.body.classList.toggle('on-clock', mine);
   }
 
+  function computeStacks(rows) {
+    const byTeam = {};
+    for (const r of rows) {
+      if (!r.team || r.team === 'UNK') continue;
+      (byTeam[r.team] = byTeam[r.team] || []).push(r);
+    }
+    return Object.entries(byTeam)
+      .filter(([, players]) => players.length >= 2)
+      .map(([team, players]) => ({ team, players: players.sort((a, b) => a.adp - b.adp) }))
+      .sort((a, b) => b.players.length - a.players.length);
+  }
+
+  function computeMatchups(rows, sched1517) {
+    // Group by (week, team pair) rather than raw player pairs, so a stack-vs-stack matchup
+    // shows once as "BUF (x, y) vs MIA (z, w)" instead of one redundant line per player pair.
+    const teamPlayers = {};
+    for (const r of rows) {
+      if (!r.team || r.team === 'UNK') continue;
+      (teamPlayers[r.team] = teamPlayers[r.team] || []).push(r);
+    }
+    const teams = Object.keys(teamPlayers);
+    const out = [];
+    for (let i = 0; i < teams.length; i++) {
+      for (let j = i + 1; j < teams.length; j++) {
+        const tA = teams[i], tB = teams[j];
+        const opps = (sched1517 || {})[tA];
+        if (!opps) continue;
+        for (let w = 0; w < 3; w++) {
+          if (opps[w] === tB) out.push({ week: 15 + w, teamA: tA, teamB: tB, playersA: teamPlayers[tA], playersB: teamPlayers[tB] });
+        }
+      }
+    }
+    return out.sort((a, b) => a.week - b.week);
+  }
+
+  function computeBestValues(rows, topN) {
+    // value = pickNum - adp: positive means you got them LATER than their market ADP (a discount).
+    return rows.map(r => ({ ...r, value: r.pickNum - r.adp }))
+      .filter(r => r.value > 0)
+      .sort((a, b) => b.value - a.value)
+      .slice(0, topN);
+  }
+
+  function computeByeClusters(rows) {
+    const byBye = {};
+    for (const r of rows) {
+      if (!r.bye) continue;
+      (byBye[r.bye] = byBye[r.bye] || []).push(r);
+    }
+    return Object.entries(byBye)
+      .filter(([, players]) => players.length >= 2)
+      .map(([week, players]) => ({ week: Number(week), players }))
+      .sort((a, b) => b.players.length - a.players.length);
+  }
+
+  function buildSummaryHtml(roster, equityResult) {
+    const stacks = computeStacks(roster);
+    const matchups = computeMatchups(roster, D.sched1517);
+    const bestValues = computeBestValues(roster, 5);
+    const byeClusters = computeByeClusters(roster);
+    const equityHtml = equityResult
+      ? (() => {
+          const se = equityResult.equitySE !== null ? ` <span class="se">±${equityResult.equitySE.toFixed(2)}</span>` : '';
+          return `<div class="summary-row mono">Playoffs ${(equityResult.P_playoff * 100).toFixed(1)}% · Round 3 ${(equityResult.P_R3 * 100).toFixed(1)}% · Finals ${(equityResult.P_finals * 100).toFixed(2)}% · Top finish ${(equityResult.P_finals_top * 100).toFixed(2)}%</div>
+            <div class="summary-row">Overall equity score: <b>${equityResult.equity.toFixed(2)}</b>${se}</div>`;
+        })()
+      : '<div class="computing">Simulating your finished roster…</div>';
+    return `
+      <div class="summary">
+        <div class="summary-sec">
+          <h3>Stacks</h3>
+          ${stacks.length ? stacks.map(s => `<div class="summary-row"><span class="chip team-chip">${esc(s.team)}</span> ${s.players.map(p => `${esc(p.player_name)} (${p.position_name})`).join(', ')}</div>`).join('')
+            : '<div class="summary-empty">No stacks — every player on a different team.</div>'}
+        </div>
+        <div class="summary-sec">
+          <h3>Weeks 15–17 matchups</h3>
+          ${matchups.length ? matchups.map(m => `<div class="summary-row">W${m.week}: <b>${esc(m.teamA)}</b> (${m.playersA.map(p => esc(p.player_name)).join(', ')}) vs <b>${esc(m.teamB)}</b> (${m.playersB.map(p => esc(p.player_name)).join(', ')})</div>`).join('')
+            : '<div class="summary-empty">No gauntlet-week matchups among your players.</div>'}
+        </div>
+        <div class="summary-sec">
+          <h3>Best ADP values</h3>
+          ${bestValues.length ? bestValues.map(r => `<div class="summary-row">${esc(r.player_name)} — took at ${AppState.roundDotPick(r.pickNum, state.nTeams)}, ADP ${r.adp.toFixed(1)} <span class="value-tag">+${r.value.toFixed(0)}</span></div>`).join('')
+            : '<div class="summary-empty">No picks that fell notably past ADP.</div>'}
+        </div>
+        ${byeClusters.length ? `<div class="summary-sec"><h3>Bye-week clusters</h3>
+          ${byeClusters.map(b => `<div class="summary-row">Week ${b.week}: ${b.players.map(p => esc(p.player_name)).join(', ')}</div>`).join('')}
+        </div>` : ''}
+        <div class="summary-sec">
+          <h3>Final team equity</h3>
+          ${equityHtml}
+        </div>
+      </div>`;
+  }
+
+  function renderDraftSummary() {
+    const wrap = $('#recs');
+    $('#sim-progress').style.width = '100%';
+    const roster = AppState.myRosterRows(state, boardByName, () => 0);
+    wrap.innerHTML = buildSummaryHtml(roster, null);
+
+    // Final-roster equity: one-time capstone calc (not on a pick clock), so main-thread sync
+    // is fine -- reuses SimCore.evaluateRoster, the same batched math used throughout the draft.
+    const myIdx = roster.map(r => nameToIdx.get(r.player_name)).filter(i => i !== undefined);
+    D.weights = readWeights();
+    const forState = state;   // guard against a reset/undo racing the async calc
+    setTimeout(() => {
+      if (myIdx.length < 18 || state !== forState) return;
+      const result = SimCore.evaluateRoster(myIdx, 5000, simSettings.seed + 999);
+      $('#recs').innerHTML = buildSummaryHtml(roster, result);
+    }, 30);
+  }
+
   function triggerRecs() {
     const done = AppState.myPickCount(state) >= state.nRounds;
     const wrap = $('#recs');
-    if (done) { wrap.innerHTML = '<div class="empty">Roster complete — 18 picks in.</div>'; return; }
+    if (done) { renderDraftSummary(); return; }
     wrap.innerHTML = `<div class="computing">Simulating ${simSettings.nSims.toLocaleString()} seasons × ${simSettings.topK} candidates…</div>`;
     $('#sim-progress').style.width = '0%';
     const drafted = new Set([...AppState.draftedNames(state)].map(n => nameToIdx.get(n)).filter(i => i !== undefined));
@@ -1534,16 +1694,21 @@ onmessage = (e) => {
     }));
   }
 
-  function renderBoard() {
+  function getFilteredBoard() {
     const drafted = AppState.draftedNames(state);
-    const mine = AppState.isMyTurn(state);
     const q = searchText.trim().toLowerCase();
-    const rows = sortedBoard.filter(p => {
+    return sortedBoard.filter(p => {
       if (!showDrafted && drafted.has(p.player_name)) return false;
       if (filterPos !== 'ALL' && p.position_name !== filterPos) return false;
       if (q && !p.player_name.toLowerCase().includes(q)) return false;
       return true;
-    }).slice(0, 60);
+    });
+  }
+
+  function renderBoard() {
+    const mine = AppState.isMyTurn(state);
+    const drafted = AppState.draftedNames(state);
+    const rows = getFilteredBoard().slice(0, 60);
 
     $('#board').innerHTML = rows.map(p => {
       const isDrafted = drafted.has(p.player_name);
@@ -1606,6 +1771,19 @@ onmessage = (e) => {
 
   $('#undo').addEventListener('click', () => { state = AppState.undoLast(state); render(); });
   $('#search').addEventListener('input', e => { searchText = e.target.value; renderBoard(); });
+  $('#search').addEventListener('keydown', e => {
+    if (e.key !== 'Enter') return;
+    // Fast opponent-pick tracking: type a few letters of a name, hit Enter, it's marked drafted
+    // by another team. Only fires when the search narrows to exactly ONE player, so a typo or
+    // an ambiguous partial name never accidentally marks the wrong person.
+    const matches = getFilteredBoard();
+    if (matches.length !== 1) return;
+    const p = matches[0];
+    if (AppState.draftedNames(state).has(p.player_name)) return;
+    e.target.value = '';
+    searchText = '';
+    pick(p.player_name, false);
+  });
   $('#show-drafted').addEventListener('change', e => { showDrafted = e.target.checked; renderBoard(); });
   document.querySelectorAll('.pos-filter button').forEach(b => b.addEventListener('click', e => {
     filterPos = e.target.dataset.pos;
@@ -1635,7 +1813,6 @@ onmessage = (e) => {
     });
   };
   $('#import').addEventListener('change', importHandler);
-  $('#setup-import').addEventListener('change', importHandler);
   $('#reset').addEventListener('click', () => {
     if (confirm('Clear the whole draft? Export first if you want to keep it.')) {
       state = null;
