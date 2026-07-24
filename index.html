@@ -1279,12 +1279,20 @@ const AppState = (() => {
       && myPickCount(state) < state.nRounds;
   }
 
-  // My next pick's overall number given how many I've made (mirrors Core.currentOverallPick)
+  // My next pick's overall number. Scans forward positionally from the current pick --
+  // the SAME primitive isMyTurn() uses -- rather than assuming "how many picks I've
+  // flagged byMe so far" corresponds to consecutive completed rounds. That count-based
+  // assumption breaks the instant any pick gets marked byMe out of strict turn order
+  // (e.g. the board's "By me" button can deliberately log a pick during someone else's
+  // turn), which drifts the countdown display even though real turn detection stays
+  // correct -- exactly the "picks to go" bug this replaces.
   function myNextPickNum(state) {
-    const n = state.nTeams, made = myPickCount(state);
-    const rnd = made + 1;
-    const sir = rnd % 2 === 1 ? state.draftSlot : n - state.draftSlot + 1;
-    return (rnd - 1) * n + sir;
+    const n = state.nTeams;
+    const cur = currentPickNum(state);
+    for (let p = cur; p <= n * state.nRounds; p++) {
+      if (slotOnClock(p, n) === state.draftSlot) return p;
+    }
+    return cur;
   }
 
   function roundDotPick(pickNum, nTeams) {
@@ -1310,24 +1318,25 @@ const AppState = (() => {
 
   // Build my roster rows (with dynamic pick_adp_value at the pick each was taken)
   // valueCurveFn injected from Core so the math stays in one place.
+  // state.picks is append-only in true chronological order, so the pick at array index i
+  // was ALWAYS taken at overall pick number i+1 -- using that directly, instead of counting
+  // how many byMe picks have been seen so far, avoids the same drift bug fixed in
+  // myNextPickNum above (a pick flagged byMe out of strict turn order no longer mislabels
+  // every roster pick's number, or corrupts the ADP-value math that depends on it).
   function myRosterRows(state, boardByName, valueCurveFn) {
     const rows = [];
-    let myIdx = 0;
-    for (const p of state.picks) {
-      if (!p.byMe) continue;
+    state.picks.forEach((p, i) => {
+      if (!p.byMe) return;
       const b = boardByName[p.player_name];
-      if (!b) { myIdx++; continue; }
-      const n = state.nTeams, rnd = myIdx + 1;
-      const sir = rnd % 2 === 1 ? state.draftSlot : n - state.draftSlot + 1;
-      const pickNum = (rnd - 1) * n + sir;
+      if (!b) return;
+      const pickNum = i + 1;
       rows.push({
         player_name: b.player_name, position_name: b.position_name, team: b.team,
         adp: b['Final ADP'], bye: b.bye,
         pick_adp_value: valueCurveFn(b['Final ADP']) - valueCurveFn(pickNum),
         pickNum,
       });
-      myIdx++;
-    }
+    });
     return rows;
   }
 
@@ -1657,6 +1666,13 @@ onmessage = (e) => {
     const wrap = $('#recs');
     if (!rows.length) { wrap.innerHTML = '<div class="empty">No legal candidates.</div>'; return; }
     const maxEq = rows[0].equity || 1;
+    // The recommendation button used to always mark a player as "mine" regardless of whose
+    // turn it actually was -- that's exactly the mechanism that caused the pick-tracking
+    // drift bug fixed earlier (a pick flagged byMe out of true turn order). Tying the label
+    // AND the click behavior to the real positional turn (same isMyTurn() the tracker uses)
+    // makes it impossible to create that drift from this button at all, rather than just
+    // correcting the display after the fact.
+    const mine = AppState.isMyTurn(state);
     const note = refiningNote ? `<div class="computing">${refiningNote}…</div>` : '';
     wrap.innerHTML = note + rows.map((r, i) => {
       const pct = maxEq > 0 ? Math.max(3, Math.round(100 * r.equity / maxEq)) : 3;
@@ -1680,11 +1696,11 @@ onmessage = (e) => {
           </div>
         </div>
         <div class="rec-eq"><div class="eq-num">${r.equity.toFixed(2)}${se}</div><div class="eq-lbl">equity</div></div>
-        <button class="btn gold rec-take">Take</button>
+        <button class="btn ${mine ? 'gold' : 'ghost'} rec-take">${mine ? 'Take' : 'Drafted'}</button>
       </div>`;
     }).join('');
     wrap.querySelectorAll('.rec-take').forEach(btn => btn.addEventListener('click', e => {
-      pick(e.target.closest('.rec').dataset.player, true);
+      pick(e.target.closest('.rec').dataset.player, AppState.isMyTurn(state));
     }));
     wrap.querySelectorAll('.bd-toggle').forEach(btn => btn.addEventListener('click', e => {
       const detail = e.target.closest('.rec').querySelector('.bd-detail');
@@ -1854,7 +1870,7 @@ onmessage = (e) => {
     }
     if (/^[1-9]$/.test(e.key)) {
       const rec = document.querySelector(`.rec[data-rank="${e.key}"]`);
-      if (rec) pick(rec.dataset.player, true);
+      if (rec) pick(rec.dataset.player, AppState.isMyTurn(state));
     }
   });
 
